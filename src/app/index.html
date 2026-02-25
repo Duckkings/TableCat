@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TableCat</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        background: transparent;
+        color: #1c1c1c;
+      }
+      .pet-container {
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 24px;
+        box-sizing: border-box;
+      }
+      .pet-panel {
+        width: 140px;
+        height: 180px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        -webkit-app-region: drag;
+      }
+      .settings-button {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(255, 255, 255, 0.9);
+        font-size: 12px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      .history-button {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 28px;
+        height: 20px;
+        border-radius: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(255, 255, 255, 0.9);
+        font-size: 11px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      .pet-panel:hover .settings-button {
+        display: flex;
+      }
+      .pet-panel:hover .history-button {
+        display: flex;
+      }
+      .pet-icon {
+        width: 120px;
+        height: 120px;
+        object-fit: contain;
+        display: none;
+      }
+      .bubble {
+        position: absolute;
+        bottom: 200px;
+        max-width: 240px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 1.4;
+        -webkit-app-region: no-drag;
+      }
+      .history-panel {
+        position: absolute;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 260px;
+        max-height: 200px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 1.4;
+        overflow-y: auto;
+        display: none;
+        -webkit-app-region: no-drag;
+      }
+      .history-panel.visible {
+        display: block;
+      }
+      .history-title {
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-bottom: 6px;
+      }
+      .history-item {
+        margin-bottom: 6px;
+      }
+      .history-item:last-child {
+        margin-bottom: 0;
+      }
+      .spinner {
+        position: absolute;
+        top: -18px;
+        left: -18px;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(0, 0, 0, 0.2);
+        border-top-color: rgba(0, 0, 0, 0.6);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        display: none;
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pet-container">
+      <div class="pet-panel" id="petPanel">
+        <div class="spinner" id="spinner"></div>
+        <div class="settings-button" id="settingsButton">设</div>
+        <div class="history-button" id="historyButton">记</div>
+        <img class="pet-icon" id="petIcon" alt="pet" />
+        <div class="history-panel" id="historyPanel">
+          <div class="history-title">回复记录</div>
+          <div id="historyList"></div>
+        </div>
+        <div class="bubble" id="bubble">等待首次问候…</div>
+      </div>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

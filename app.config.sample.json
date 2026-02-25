@@ -1,0 +1,8 @@
+﻿{
+  "role_card_path": "C:/TableCat/docs/rolecards/rolecard.cat.json",
+  "openai": {
+    "api_key": "YOUR_API_KEY",
+    "model": "gpt-4o-mini"
+  },
+  "bubble_timeout_sec": 3
+}

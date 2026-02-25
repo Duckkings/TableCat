@@ -1,0 +1,17 @@
+﻿{
+  "name": "tablecat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop pet companion",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npm run build && electron .",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^29.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
