@@ -2,6 +2,10 @@
 
 contextBridge.exposeInMainWorld("tablecat", {
   loadRoleCard: (path) => ipcRenderer.invoke("rolecard:load", path),
+  getConfig: () => ipcRenderer.invoke("config:get"),
+  updateConfig: (patch) => ipcRenderer.invoke("config:update", patch),
+  sendChatMessage: (text) => ipcRenderer.invoke("chat:send", text),
+  testApiConnection: () => ipcRenderer.invoke("api:test-connection"),
   requestFirstGreeting: (config) => ipcRenderer.invoke("model:first-greeting", config),
   requestModel: (config, request) => ipcRenderer.invoke("model:request", config, request),
   onBubbleUpdate: (handler) => {

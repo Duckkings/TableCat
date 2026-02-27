@@ -36,39 +36,43 @@
         position: absolute;
         top: 6px;
         left: 6px;
-        width: 20px;
-        height: 20px;
+        width: 28px;
+        height: 24px;
         border-radius: 6px;
         border: 1px solid rgba(0, 0, 0, 0.12);
         background: rgba(255, 255, 255, 0.9);
-        font-size: 12px;
-        display: none;
+        font-size: 11px;
+        display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         -webkit-app-region: no-drag;
+        pointer-events: auto;
+        z-index: 20;
       }
       .history-button {
         position: absolute;
         top: 6px;
         right: 6px;
         width: 28px;
-        height: 20px;
+        height: 24px;
         border-radius: 6px;
         border: 1px solid rgba(0, 0, 0, 0.12);
         background: rgba(255, 255, 255, 0.9);
         font-size: 11px;
-        display: none;
+        display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         -webkit-app-region: no-drag;
+        pointer-events: auto;
+        z-index: 20;
       }
       .pet-panel:hover .settings-button {
-        display: flex;
+        opacity: 1;
       }
       .pet-panel:hover .history-button {
-        display: flex;
+        opacity: 1;
       }
       .pet-icon {
         width: 120px;
@@ -108,6 +112,151 @@
       .history-panel.visible {
         display: block;
       }
+      .settings-panel {
+        position: absolute;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 260px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.97);
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 1.4;
+        display: none;
+        -webkit-app-region: no-drag;
+      }
+      .settings-panel.visible {
+        display: block;
+      }
+      .chat-panel {
+        position: absolute;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 280px;
+        height: 230px;
+        background: rgba(255, 255, 255, 0.97);
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        display: none;
+        flex-direction: column;
+        padding: 8px;
+        box-sizing: border-box;
+        -webkit-app-region: no-drag;
+      }
+      .chat-panel.visible {
+        display: flex;
+      }
+      .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+      .chat-title {
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.6);
+      }
+      .chat-close {
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.95);
+        font-size: 11px;
+        padding: 0 6px;
+        cursor: pointer;
+        opacity: 0.92;
+      }
+      .chat-log {
+        flex: 1;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        padding: 6px;
+        overflow-y: auto;
+        background: rgba(255, 255, 255, 0.85);
+      }
+      .chat-msg {
+        font-size: 12px;
+        line-height: 1.4;
+        margin-bottom: 6px;
+        word-break: break-word;
+      }
+      .chat-msg:last-child {
+        margin-bottom: 0;
+      }
+      .chat-msg-user {
+        color: #1f4b89;
+      }
+      .chat-msg-assistant {
+        color: #1c1c1c;
+      }
+      .chat-msg-system {
+        color: #8a3e3e;
+      }
+      .chat-input-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .chat-input {
+        flex: 1;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
+      .chat-send {
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 4px 10px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .settings-title {
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-bottom: 8px;
+      }
+      .settings-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .settings-row:last-of-type {
+        margin-bottom: 0;
+      }
+      .settings-label {
+        min-width: 86px;
+      }
+      .settings-input {
+        width: 100%;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        padding: 4px 6px;
+        font-size: 12px;
+        box-sizing: border-box;
+      }
+      .settings-check {
+        width: 16px;
+        height: 16px;
+      }
+      .settings-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .settings-action {
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 2px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
       .history-title {
         font-size: 11px;
         color: rgba(0, 0, 0, 0.6);
@@ -141,12 +290,59 @@
     <div class="pet-container">
       <div class="pet-panel" id="petPanel">
         <div class="spinner" id="spinner"></div>
-        <div class="settings-button" id="settingsButton">设</div>
-        <div class="history-button" id="historyButton">记</div>
+        <button class="settings-button" id="settingsButton" type="button">设</button>
+        <button class="history-button" id="historyButton" type="button">记</button>
         <img class="pet-icon" id="petIcon" alt="pet" />
         <div class="history-panel" id="historyPanel">
           <div class="history-title">回复记录</div>
           <div id="historyList"></div>
+        </div>
+        <div class="chat-panel" id="chatPanel">
+          <div class="chat-header">
+            <div class="chat-title">互动聊天</div>
+            <button class="chat-close" id="chatCloseBtn">收起</button>
+          </div>
+          <div class="chat-log" id="chatLog"></div>
+          <div class="chat-input-row">
+            <input class="chat-input" id="chatInput" type="text" placeholder="输入内容并回车" />
+            <button class="chat-send" id="chatSendBtn">发送</button>
+          </div>
+        </div>
+        <div class="settings-panel" id="settingsPanel">
+          <div class="settings-title">设置</div>
+          <div class="settings-row">
+            <div class="settings-label">角色卡路径</div>
+            <input class="settings-input" id="roleCardPathInput" type="text" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">气泡消失秒数</div>
+            <input class="settings-input" id="bubbleTimeoutInput" type="number" min="0" step="1" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">感知总开关</div>
+            <input class="settings-check" id="enablePerceptionLoopInput" type="checkbox" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">感知间隔(秒)</div>
+            <input class="settings-input" id="perceptionIntervalInput" type="number" min="5" max="30" step="1" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">截图感知</div>
+            <input class="settings-check" id="enableScreenInput" type="checkbox" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">麦克风感知</div>
+            <input class="settings-check" id="enableMicInput" type="checkbox" />
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">系统音频感知</div>
+            <input class="settings-check" id="enableSystemAudioInput" type="checkbox" />
+          </div>
+          <div class="settings-actions">
+            <button class="settings-action" id="settingsTestApiBtn">测 API</button>
+            <button class="settings-action" id="settingsCancelBtn">取消</button>
+            <button class="settings-action" id="settingsSaveBtn">保存</button>
+          </div>
         </div>
         <div class="bubble" id="bubble">等待首次问候…</div>
       </div>

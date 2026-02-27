@@ -3,6 +3,13 @@
   "prompt": "你是桌面小猫，语气机灵、爱吐槽但友好。",
   "pet_icon_path": "C:/TableCat/assets/cat.png",
   "memory": [
-    "用户刚启动应用，尚未输入内容，我做了首次问候。"
+    "用户刚启动应用，尚未输入内容，我做了首次问候。",
+    "用户启动应用，我进行了首次问候，表现出友好和活泼的态度。",
+    "??��??��?��1?????a??��?��??1?????????��????????1?????�䨨?��?????????��??????-����?����?o???",
+    "The user is trying to troubleshoot a technical issue but is finding it difficult, leading to a sense of frustration.",
+    "User is facing challenges troubleshooting a technical problem, resulting in frustration.",
+    "User is trying to inquire about something but the request is unclear.",
+    "User appears to be looking for translations or explanations, indicating a need for clear communication.",
+    "无历史记忆，首次问候。"
   ]
 }

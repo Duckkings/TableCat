@@ -4,5 +4,10 @@
     "api_key": "YOUR_API_KEY",
     "model": "gpt-4o-mini"
   },
-  "bubble_timeout_sec": 3
+  "bubble_timeout_sec": 3,
+  "enable_perception_loop": false,
+  "perception_interval_sec": 5,
+  "enable_screen": true,
+  "enable_mic": true,
+  "enable_system_audio": true
 }
