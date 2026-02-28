@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("tablecat", {
   sendChatMessage: (text) => ipcRenderer.invoke("chat:send", text),
   testApiConnection: () => ipcRenderer.invoke("api:test-connection"),
   openScreenshotFolder: () => ipcRenderer.invoke("debug:open-screenshot-folder"),
+  openScreenAttentionFolder: () => ipcRenderer.invoke("debug:open-screen-attention-folder"),
   requestFirstGreeting: (config) => ipcRenderer.invoke("model:first-greeting", config),
   requestModel: (config, request) => ipcRenderer.invoke("model:request", config, request),
   onBubbleUpdate: (handler) => {

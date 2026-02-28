@@ -12,6 +12,7 @@
   "enable_system_audio": true,
   "screen_attention_enabled": false,
   "screen_gate_tick_ms": 500,
+  "screen_active_sampling_enabled": false,
   "screen_thumb_width": 160,
   "screen_thumb_height": 90,
   "screen_l0_visual_delta_threshold": 0.18,
@@ -19,9 +20,11 @@
   "screen_l0_input_intensity_threshold": 0.1,
   "screen_l1_cluster_threshold": 0.25,
   "screen_trigger_threshold": 0.35,
-  "screen_global_cooldown_sec": 45,
+  "screen_global_cooldown_sec": 1,
   "screen_same_topic_cooldown_sec": 120,
   "screen_busy_cooldown_sec": 180,
   "screen_recent_cache_size": 30,
-  "screen_debug_save_gate_frames": true
+  "screen_debug_save_gate_frames": true,
+  "active_companion_enabled": false,
+  "active_companion_interval_min": 7
 }

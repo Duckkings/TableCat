@@ -15,6 +15,14 @@ export interface PerceptionInput {
   content: string;
   image_path?: string;
   image_mime_type?: string;
+  trigger_score?: number;
+  allow_interrupt?: boolean;
+  trigger_reason?: string;
+  attachments?: {
+    path: string;
+    mime_type: string;
+    label?: string;
+  }[];
 }
 
 export interface ModelRequest {
@@ -57,6 +65,18 @@ export interface ScreenAttentionDebugState {
   clusterScore: number;
   l0Pass: boolean;
   l1Pass: boolean;
+  foregroundChanged?: boolean;
+  foregroundTitle?: string;
+  foregroundProcessName?: string;
+  currentTickMs?: number;
+  actualSampleIntervalMs?: number;
+  tickDurationMs?: number;
+  cooldownRemainingMs?: number;
+  lastTriggerAt?: string;
+  activeSamplingEnabled?: boolean;
+  currentResponseScore?: number;
+  responseActive?: boolean;
+  responsePhase?: "idle" | "inflight" | "bubble";
   decision: "idle" | "drop" | "cooldown" | "trigger";
   reasons: string[];
 }

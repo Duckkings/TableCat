@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
-import { powerMonitor } from "electron";
+import { powerMonitor, shell } from "electron";
 import { AppConfig } from "../config";
 import { logError, logInfo } from "../logger";
 import { PerceptionInput } from "../../shared/types";
@@ -18,11 +18,11 @@ import {
   computeHashDistance,
   computeVisualDelta
 } from "./frameGate";
+import { getForegroundWindowInfo } from "./foregroundWindow";
 import { buildMomentScores, computeUserIdleScore } from "./momentScore";
 import {
   CapturedScreenImage,
   captureScreenImage,
-  captureScreenPerceptionInput,
   cropImageToPngBuffer,
   savePngBuffer
 } from "./screenCapture";
@@ -31,6 +31,12 @@ import { TriggerQueue } from "./triggerQueue";
 export interface AttentionLoopCallbacks {
   onDebugState: (state: AttentionUiState) => void;
   onTrigger: (input: PerceptionInput) => Promise<void>;
+  getResponseState?: () => {
+    active: boolean;
+    interruptible: boolean;
+    score: number;
+    phase: "idle" | "inflight" | "bubble";
+  };
 }
 
 interface AttentionLoopDirs {
@@ -38,16 +44,32 @@ interface AttentionLoopDirs {
   events: string;
   frames: string;
   roi: string;
+  llm: string;
   metrics: string;
+}
+
+interface CaptureHistoryItem {
+  atMs: number;
+  capture: CapturedScreenImage;
 }
 
 export class ScreenAttentionLoop {
   private readonly sessionId = buildSessionId(new Date());
   private readonly dirs: AttentionLoopDirs;
   private readonly triggerQueue: TriggerQueue;
+  private started = false;
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
   private previousFrame: FrameAnalysisSnapshot | null = null;
+  private captureHistory: CaptureHistoryItem[] = [];
+  private previousForegroundKey = "";
+  private lastResolvedTickMs = 0;
+  private lastTickCompletedAtMs = 0;
+  private lastTickDurationMs = 0;
+  private tickDurationTotalMs = 0;
+  private overrunCount = 0;
+  private companionTriggerCount = 0;
+  private lastCompanionAtMs = 0;
   private tickCount = 0;
   private triggerCount = 0;
   private cooldownCount = 0;
@@ -62,44 +84,62 @@ export class ScreenAttentionLoop {
       events: path.join(root, "events"),
       frames: path.join(root, "frames"),
       roi: path.join(root, "roi"),
+      llm: path.join(root, "llm"),
       metrics: path.join(root, "metrics")
     };
     ensureDir(this.dirs.events);
     ensureDir(this.dirs.frames);
     ensureDir(this.dirs.roi);
+    ensureDir(this.dirs.llm);
     ensureDir(this.dirs.metrics);
     this.triggerQueue = new TriggerQueue(buildTriggerQueueConfig(config));
   }
 
   start(): void {
-    if (this.timer) {
+    if (this.started) {
       return;
     }
-    const tickMs = normalizeInteger(this.config.screen_gate_tick_ms, 500);
-    this.callbacks.onDebugState(buildIdleState(true));
-    this.timer = setInterval(() => {
-      void this.runTick();
-    }, tickMs);
+    this.started = true;
+    const tickMs = getBaseTickMs(this.config);
+    this.callbacks.onDebugState(buildIdleState(true, this.config));
+    this.scheduleNextTick(tickMs);
     logInfo(`Screen attention loop started tick=${tickMs}ms`);
   }
 
   stop(): void {
+    this.started = false;
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
     this.runningTick = false;
     this.previousFrame = null;
-    this.callbacks.onDebugState(buildIdleState(false));
+    this.captureHistory = [];
+    this.callbacks.onDebugState(buildIdleState(false, this.config));
     void this.writeMetrics();
     logInfo("Screen attention loop stopped");
   }
 
+  private scheduleNextTick(delayMs: number): void {
+    if (!this.started) {
+      return;
+    }
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.runTick();
+    }, delayMs);
+  }
+
   private async runTick(): Promise<void> {
     if (this.runningTick) {
+      this.overrunCount += 1;
       return;
     }
     this.runningTick = true;
+    const tickStartedAtMs = Date.now();
 
     try {
       const capture = await captureScreenImage({
@@ -108,6 +148,8 @@ export class ScreenAttentionLoop {
       });
       const now = capture.capturedAt;
       const snapshot = buildFrameSnapshot(capture.bitmapBuffer, capture.width, capture.height);
+      this.captureHistory.push({ atMs: now.getTime(), capture });
+      this.captureHistory = this.captureHistory.slice(-12);
       const thresholds = buildThresholds(this.config);
       const visualDelta = computeVisualDelta(this.previousFrame, snapshot);
       const hashDistance = computeHashDistance(this.previousFrame, snapshot);
@@ -115,6 +157,11 @@ export class ScreenAttentionLoop {
       const idleSeconds = powerMonitor.getSystemIdleTime();
       const userIdleScore = computeUserIdleScore(idleSeconds);
       const cooldownOk = this.triggerQueue.peekCooldown(now.getTime());
+      const foreground = await getForegroundWindowInfo(now.getTime());
+      const foregroundKey = foreground
+        ? `${foreground.processName}::${foreground.title}`
+        : "";
+      const foregroundChanged = this.previousForegroundKey !== "" && foregroundKey !== "" && foregroundKey !== this.previousForegroundKey;
       const inputIntensity = 0;
 
       const l0Reasons = collectL0Reasons(
@@ -127,16 +174,22 @@ export class ScreenAttentionLoop {
       );
       const l0Pass = l0Reasons.length === 0;
 
-      const l1Reasons = collectL1Reasons(l0Pass, clusterScore, userIdleScore, thresholds);
+      const l1Reasons = collectL1Reasons(
+        l0Pass,
+        clusterScore,
+        userIdleScore,
+        foregroundChanged,
+        thresholds
+      );
       const l1Pass = l1Reasons.length === 0;
 
       const roi = buildRoiProposal(this.previousFrame, snapshot, capture.width, capture.height);
-      const signature = buildSignature(snapshot, roi);
+      const signature = buildSignature(snapshot, roi, foreground?.processName, foreground?.title);
       const noveltyScore = this.triggerQueue.getNoveltyScore(signature);
       const scores = buildMomentScores({
         visualDelta,
         hashDistance,
-        clusterScore,
+        clusterScore: foregroundChanged ? Math.max(clusterScore, thresholds.l1ClusterThreshold) : clusterScore,
         userIdleScore,
         cooldownOk,
         noveltyScore
@@ -144,6 +197,12 @@ export class ScreenAttentionLoop {
 
       let decision: "idle" | "drop" | "cooldown" | "trigger" = "drop";
       let reasons = [...l0Reasons, ...l1Reasons];
+      const responseState = this.callbacks.getResponseState?.() ?? {
+        active: false,
+        interruptible: false,
+        score: 0,
+        phase: "idle" as const
+      };
 
       if (!this.previousFrame) {
         decision = "idle";
@@ -154,7 +213,9 @@ export class ScreenAttentionLoop {
           finalScore: scores.finalScore,
           triggerThreshold: thresholds.triggerThreshold,
           signature,
-          userIdleScore
+          userIdleScore,
+          interruptActiveResponse: responseState.active && responseState.interruptible,
+          currentResponseScore: responseState.score
         });
         decision = queueResult.decision;
         reasons = queueResult.reasons;
@@ -171,7 +232,9 @@ export class ScreenAttentionLoop {
           reasons: l0Reasons
         },
         l1: {
-          foregroundChanged: false,
+          foregroundChanged,
+          foregroundTitle: foreground?.title,
+          foregroundProcessName: foreground?.processName,
           clusterScore,
           userIdleScore,
           audioPeakScore: 0,
@@ -194,26 +257,77 @@ export class ScreenAttentionLoop {
       }
 
       await this.writeEvent(candidate, capture);
-      this.callbacks.onDebugState(toUiState(candidate));
+      this.callbacks.onDebugState(
+        toUiState(candidate, this.config, {
+          actualSampleIntervalMs: this.lastTickCompletedAtMs > 0 ? tickStartedAtMs - this.lastTickCompletedAtMs : undefined,
+          tickDurationMs: Date.now() - tickStartedAtMs,
+          cooldownRemainingMs: this.triggerQueue.getCooldownRemainingMs(now.getTime()),
+          lastTriggerAt: this.triggerQueue.getLastTriggerAtMs() > 0
+            ? new Date(this.triggerQueue.getLastTriggerAtMs()).toISOString()
+            : undefined,
+          currentResponseScore: responseState.score,
+          responseActive: responseState.active,
+          responsePhase: responseState.phase
+        })
+      );
+
+      const companionReady = this.shouldTriggerCompanion(now.getTime(), visualDelta, hashDistance, clusterScore, userIdleScore);
+
+      this.previousFrame = snapshot;
+      this.previousForegroundKey = foregroundKey || this.previousForegroundKey;
+      this.lastTickDurationMs = Date.now() - tickStartedAtMs;
+      this.tickDurationTotalMs += this.lastTickDurationMs;
+      const resolvedTickMs = resolveNextTickMs(this.config, {
+        visualDelta,
+        hashDistance,
+        clusterScore,
+        l0Pass,
+        l1Pass,
+        decision
+      });
+      this.lastResolvedTickMs = resolvedTickMs;
+      this.lastTickCompletedAtMs = Date.now();
+      await this.writeMetrics();
+      this.scheduleNextTick(resolvedTickMs);
 
       if (decision === "trigger") {
         try {
-          const input = await captureScreenPerceptionInput();
-          await this.callbacks.onTrigger(input);
+          const input = await this.buildTriggeredInput(candidate, capture);
+          logInfo(
+            `Screen attention trigger dispatch ` +
+            `score=${candidate.scores.finalScore.toFixed(2)} ` +
+            `reasons=${candidate.reasons.join(",") || "none"} ` +
+            `foreground=${foreground?.processName ?? "-"}`
+          );
+          void this.dispatchTrigger(input, "screen_attention");
         } catch (error) {
           logError("Screen attention trigger failed", error);
         }
+      } else if (companionReady) {
+        try {
+          const input = await this.buildCompanionInput(candidate, capture);
+          this.companionTriggerCount += 1;
+          this.lastCompanionAtMs = now.getTime();
+          logInfo(
+            `Active companion trigger dispatch ` +
+            `score=${candidate.scores.finalScore.toFixed(2)} ` +
+            `reasons=${candidate.reasons.join(",") || "active_companion"}`
+          );
+          void this.dispatchTrigger(input, "active_companion");
+        } catch (error) {
+          logError("Active companion trigger failed", error);
+        }
       }
-
-      this.previousFrame = snapshot;
-      await this.writeMetrics();
     } catch (error) {
       logError("Screen attention tick failed", error);
+      this.lastTickDurationMs = Date.now() - tickStartedAtMs;
+      this.tickDurationTotalMs += this.lastTickDurationMs;
       this.callbacks.onDebugState({
-        ...buildIdleState(true),
+        ...buildIdleState(true, this.config),
         decision: "drop",
         reasons: ["tick_failed"]
       });
+      this.scheduleNextTick(getBaseTickMs(this.config));
     } finally {
       this.runningTick = false;
     }
@@ -239,7 +353,10 @@ export class ScreenAttentionLoop {
     };
     writeFileSync(eventPath, JSON.stringify(payload, null, 2), "utf8");
 
-    if (this.config.screen_debug_save_gate_frames === false) {
+    if (
+      this.config.screen_debug_save_gate_frames === false ||
+      (this.config.screen_active_sampling_enabled === true && this.lastResolvedTickMs > 0 && this.lastResolvedTickMs <= 100)
+    ) {
       return;
     }
 
@@ -258,9 +375,177 @@ export class ScreenAttentionLoop {
       sessionId: this.sessionId,
       tickCount: this.tickCount,
       triggerCount: this.triggerCount,
-      cooldownCount: this.cooldownCount
+      cooldownCount: this.cooldownCount,
+      companionTriggerCount: this.companionTriggerCount,
+      averageTickDurationMs: this.tickCount > 0 ? this.tickDurationTotalMs / this.tickCount : 0,
+      lastTickDurationMs: this.lastTickDurationMs,
+      currentTickMs: this.lastResolvedTickMs,
+      overrunCount: this.overrunCount
     };
     writeFileSync(metricsPath, JSON.stringify(payload, null, 2), "utf8");
+  }
+
+  async openSessionFolder(): Promise<string> {
+    const errorMessage = await shell.openPath(this.dirs.root);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+    return this.dirs.root;
+  }
+
+  private async buildTriggeredInput(
+    candidate: MomentCandidate,
+    capture: CapturedScreenImage
+  ): Promise<PerceptionInput> {
+    const stamp = candidate.ts.replace(/[:.]/g, "-");
+    const globalThumbPath = path.join(this.dirs.llm, `${stamp}_global.png`);
+    savePngBuffer(globalThumbPath, capture.pngBuffer);
+
+    const roiBox = candidate.roi.boxes[0] ?? {
+      x: 0,
+      y: 0,
+      width: capture.width,
+      height: capture.height
+    };
+
+    const currentRoiPath = path.join(this.dirs.llm, `${stamp}_current_roi.png`);
+    savePngBuffer(currentRoiPath, cropImageToPngBuffer(capture, roiBox));
+
+    const previousCapture = this.findHistoricalCapture(candidate.ts);
+    let previousRoiPath: string | null = null;
+    if (previousCapture) {
+      previousRoiPath = path.join(this.dirs.llm, `${stamp}_previous_roi.png`);
+      savePngBuffer(previousRoiPath, cropImageToPngBuffer(previousCapture, roiBox));
+    }
+
+    const attachments = [
+      { path: currentRoiPath, mime_type: "image/png", label: "current_roi" },
+      previousRoiPath
+        ? { path: previousRoiPath, mime_type: "image/png", label: "previous_roi" }
+        : null,
+      { path: globalThumbPath, mime_type: "image/png", label: "global_thumb" }
+    ].filter((item): item is { path: string; mime_type: string; label: string } => item !== null);
+
+    const metadataPath = path.join(this.dirs.llm, `${stamp}.json`);
+    writeFileSync(
+      metadataPath,
+      JSON.stringify(
+        {
+          ts: candidate.ts,
+          decision: candidate.decision,
+          finalScore: candidate.scores.finalScore,
+          reasons: candidate.reasons,
+          attachments
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    return {
+      source: "screen",
+      trigger_score: candidate.scores.finalScore,
+      allow_interrupt: true,
+      trigger_reason: candidate.reasons.join(",") || "trigger_ready",
+      content: [
+        `门控已触发，时间：${candidate.ts}。`,
+        "请优先依据附带图片判断用户当前在做什么，再决定是否需要简短回应。",
+        "附图顺序是：当前 ROI、历史 ROI（如果有）、当前全局缩略图。",
+        `当前决策：${candidate.decision}；评分：${candidate.scores.finalScore.toFixed(2)}。`,
+        `触发原因：${candidate.reasons.join("、") || "无"}。`
+      ].join(" "),
+      attachments
+    };
+  }
+
+  private findHistoricalCapture(ts: string): CapturedScreenImage | null {
+    const targetMs = new Date(ts).getTime() - 2000;
+    let bestMatch: CaptureHistoryItem | null = null;
+
+    for (const item of this.captureHistory) {
+      if (item.atMs > targetMs) {
+        continue;
+      }
+      bestMatch = item;
+    }
+
+    if (bestMatch) {
+      return bestMatch.capture;
+    }
+    return this.captureHistory.length > 1 ? this.captureHistory[0].capture : null;
+  }
+
+  private shouldTriggerCompanion(
+    nowMs: number,
+    visualDelta: number,
+    hashDistance: number,
+    clusterScore: number,
+    userIdleScore: number
+  ): boolean {
+    if (this.config.active_companion_enabled !== true) {
+      return false;
+    }
+    const intervalMin = normalizeInteger(this.config.active_companion_interval_min, 7);
+    if (nowMs - this.lastCompanionAtMs < intervalMin * 60 * 1000) {
+      return false;
+    }
+    if (this.triggerQueue.getCooldownRemainingMs(nowMs) > 0) {
+      return false;
+    }
+    if (userIdleScore < 0.8) {
+      return false;
+    }
+    if (visualDelta >= 0.03 || hashDistance >= 2 || clusterScore >= 0.08) {
+      return false;
+    }
+    return true;
+  }
+
+  private async buildCompanionInput(
+    candidate: MomentCandidate,
+    capture: CapturedScreenImage
+  ): Promise<PerceptionInput> {
+    const stamp = `${candidate.ts.replace(/[:.]/g, "-")}_companion`;
+    const globalPath = path.join(this.dirs.llm, `${stamp}_global.png`);
+    savePngBuffer(globalPath, capture.pngBuffer);
+    const attachments = [{ path: globalPath, mime_type: "image/png", label: "companion_global" }];
+    const metadataPath = path.join(this.dirs.llm, `${stamp}.json`);
+    writeFileSync(
+      metadataPath,
+      JSON.stringify(
+        {
+          ts: candidate.ts,
+          kind: "active_companion",
+          finalScore: candidate.scores.finalScore,
+          reasons: ["active_companion"]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+    return {
+      source: "screen",
+      trigger_score: candidate.scores.finalScore,
+      allow_interrupt: true,
+      trigger_reason: "active_companion",
+      content: [
+        `当前是主动陪伴时刻，时间：${candidate.ts}。`,
+        "屏幕已稳定一段时间，且用户看起来处于较空闲状态。",
+        "请只基于可见内容给一句低打扰、简短的陪伴式评论，不要过度脑补。"
+      ].join(" "),
+      attachments
+    };
+  }
+
+  private async dispatchTrigger(input: PerceptionInput, source: string): Promise<void> {
+    try {
+      await this.callbacks.onTrigger(input);
+      logInfo(`${source} dispatch completed`);
+    } catch (error) {
+      logError(`${source} dispatch failed`, error);
+    }
   }
 }
 
@@ -274,16 +559,45 @@ function buildThresholds(config: AppConfig): AttentionThresholds {
   };
 }
 
+function resolveNextTickMs(
+  config: AppConfig,
+  state: {
+    visualDelta: number;
+    hashDistance: number;
+    clusterScore: number;
+    l0Pass: boolean;
+    l1Pass: boolean;
+    decision: "idle" | "drop" | "cooldown" | "trigger";
+  }
+): number {
+  const baseTickMs = getBaseTickMs(config);
+  if (config.screen_active_sampling_enabled !== true) {
+    return baseTickMs;
+  }
+
+  const activeTickMs = Math.min(baseTickMs, 100);
+  const isActive =
+    state.decision === "trigger" ||
+    state.decision === "cooldown" ||
+    state.l0Pass ||
+    state.l1Pass ||
+    state.visualDelta >= 0.12 ||
+    state.hashDistance >= 4 ||
+    state.clusterScore >= 0.18;
+
+  return isActive ? activeTickMs : baseTickMs;
+}
+
 function buildTriggerQueueConfig(config: AppConfig): TriggerQueueConfig {
   return {
-    globalCooldownMs: normalizeInteger(config.screen_global_cooldown_sec, 45) * 1000,
+    globalCooldownMs: normalizeInteger(config.screen_global_cooldown_sec, 1) * 1000,
     sameTopicCooldownMs: normalizeInteger(config.screen_same_topic_cooldown_sec, 120) * 1000,
     busyCooldownMs: normalizeInteger(config.screen_busy_cooldown_sec, 180) * 1000,
     recentCacheSize: normalizeInteger(config.screen_recent_cache_size, 30)
   };
 }
 
-function buildIdleState(active: boolean): AttentionUiState {
+function buildIdleState(active: boolean, config?: AppConfig): AttentionUiState {
   return {
     ts: new Date().toISOString(),
     active,
@@ -296,12 +610,33 @@ function buildIdleState(active: boolean): AttentionUiState {
     clusterScore: 0,
     l0Pass: false,
     l1Pass: false,
+    foregroundChanged: false,
+    foregroundTitle: "",
+    foregroundProcessName: "",
+    currentTickMs: config ? getBaseTickMs(config) : undefined,
+    actualSampleIntervalMs: undefined,
+    tickDurationMs: undefined,
+    cooldownRemainingMs: undefined,
+    lastTriggerAt: undefined,
+    activeSamplingEnabled: config?.screen_active_sampling_enabled === true,
     decision: "idle",
     reasons: active ? ["waiting_for_frame"] : ["attention_disabled"]
   };
 }
 
-function toUiState(candidate: MomentCandidate): AttentionUiState {
+function toUiState(
+  candidate: MomentCandidate,
+  config?: AppConfig,
+  runtime?: {
+    actualSampleIntervalMs?: number;
+    tickDurationMs?: number;
+    cooldownRemainingMs?: number;
+    lastTriggerAt?: string;
+    currentResponseScore?: number;
+    responseActive?: boolean;
+    responsePhase?: "idle" | "inflight" | "bubble";
+  }
+): AttentionUiState {
   return {
     ts: candidate.ts,
     active: true,
@@ -314,6 +649,25 @@ function toUiState(candidate: MomentCandidate): AttentionUiState {
     clusterScore: candidate.l1.clusterScore,
     l0Pass: candidate.l0.pass,
     l1Pass: candidate.l1.pass,
+    foregroundChanged: candidate.l1.foregroundChanged,
+    foregroundTitle: candidate.l1.foregroundTitle,
+    foregroundProcessName: candidate.l1.foregroundProcessName,
+    currentTickMs: config ? resolveNextTickMs(config, {
+      visualDelta: candidate.l0.visualDelta,
+      hashDistance: candidate.l0.hashDistance,
+      clusterScore: candidate.l1.clusterScore,
+      l0Pass: candidate.l0.pass,
+      l1Pass: candidate.l1.pass,
+      decision: candidate.decision
+    }) : undefined,
+    actualSampleIntervalMs: runtime?.actualSampleIntervalMs,
+    tickDurationMs: runtime?.tickDurationMs,
+    cooldownRemainingMs: runtime?.cooldownRemainingMs,
+    lastTriggerAt: runtime?.lastTriggerAt,
+    activeSamplingEnabled: config?.screen_active_sampling_enabled === true,
+    currentResponseScore: runtime?.currentResponseScore,
+    responseActive: runtime?.responseActive,
+    responsePhase: runtime?.responsePhase,
     decision: candidate.decision,
     reasons: candidate.reasons
   };
@@ -349,26 +703,40 @@ function collectL1Reasons(
   l0Pass: boolean,
   clusterScore: number,
   userIdleScore: number,
+  foregroundChanged: boolean,
   thresholds: AttentionThresholds
 ): string[] {
   if (!l0Pass) {
     return ["l0_blocked"];
   }
-  if (clusterScore >= thresholds.l1ClusterThreshold || userIdleScore >= 0.35) {
+  if (
+    clusterScore >= thresholds.l1ClusterThreshold ||
+    userIdleScore >= 0.35 ||
+    foregroundChanged
+  ) {
     return [];
   }
   return ["l1_not_worthy"];
 }
 
-function buildSignature(snapshot: FrameAnalysisSnapshot, candidate: MomentCandidate["roi"]): string {
+function buildSignature(
+  snapshot: FrameAnalysisSnapshot,
+  candidate: MomentCandidate["roi"],
+  foregroundProcessName?: string,
+  foregroundTitle?: string
+): string {
   const roiSignature = candidate.boxes
     .map((box) => `${box.x},${box.y},${box.width},${box.height}`)
     .join("|");
-  return `${snapshot.signatureBits}:${roiSignature}`;
+  return `${snapshot.signatureBits}:${roiSignature}:${foregroundProcessName ?? ""}:${foregroundTitle ?? ""}`;
 }
 
 function normalizeInteger(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) ? value : fallback;
+}
+
+function getBaseTickMs(config: AppConfig): number {
+  return Math.max(100, normalizeInteger(config.screen_gate_tick_ms, 500));
 }
 
 function normalizeNumber(value: number | undefined, fallback: number): number {

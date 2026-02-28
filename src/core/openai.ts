@@ -197,6 +197,17 @@ function buildUserContentParts(
       type: "text",
       text: buildFormattedInput(input)
     });
+    if (input.attachments && input.attachments.length > 0) {
+      for (const attachment of input.attachments) {
+        parts.push({
+          type: "image_url",
+          image_url: {
+            url: buildImageDataUrl(attachment.path, attachment.mime_type)
+          }
+        });
+      }
+      continue;
+    }
     if (input.source === "screen" && input.image_path) {
       parts.push({
         type: "image_url",

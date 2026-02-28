@@ -39,6 +39,19 @@
     "无历史记忆",
     "用户正在处理技术问题，桌面上看起来有些混乱，可能导致挫败感。",
     "无历史记忆",
-    "用户正在处理技术问题，桌面混乱导致挫败感。"
+    "用户正在处理技术问题，桌面混乱导致挫败感。",
+    "用户刚启动应用，尚未输入任何内容",
+    "User is trying to troubleshoot a technical issue but is finding it difficult, leading to frustration. They need clear communication to address their concerns.",
+    "User is seeking help or has a question but hasn't provided enough information to understand the context.",
+    "User is inquiring about programming or technical information but has not provided enough context.",
+    "ç¨æ·å¸æä»å±å¹åå®¹ä¸­æåç¹å®ä¿¡æ¯",
+    "User appears to be engaging in a discussion and is interested in more comprehensive insights.",
+    "Encountered an unrecognizable format in the input.",
+    "",
+    "User is facing challenges with a technical problem and is seeking information or help but has not clearly specified their request.",
+    "User has encountered a situation that is causing them some level of distress or confusion and is looking for help or understanding.",
+    "用户在处理技术问题，感觉很沮丧，桌面混乱。",
+    "User is inquiring about details regarding a specific event or occurrence that seems to be causing them worry.",
+    "用户正在处理技术问题，桌面混乱导致沮丧。"
   ]
 }

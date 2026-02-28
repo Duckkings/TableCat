@@ -24,6 +24,8 @@ export interface L0GateResult {
 
 export interface L1GateResult {
   foregroundChanged: boolean;
+  foregroundTitle?: string;
+  foregroundProcessName?: string;
   clusterScore: number;
   userIdleScore: number;
   audioPeakScore: number;

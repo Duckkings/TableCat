@@ -12,6 +12,14 @@ export class TriggerQueue {
 
   constructor(private readonly config: TriggerQueueConfig) {}
 
+  getLastTriggerAtMs(): number {
+    return this.lastTriggerAtMs;
+  }
+
+  getCooldownRemainingMs(nowMs: number): number {
+    return Math.max(0, this.config.globalCooldownMs - (nowMs - this.lastTriggerAtMs));
+  }
+
   getNoveltyScore(signature: string): number {
     return this.computeNovelty(signature);
   }
@@ -22,6 +30,8 @@ export class TriggerQueue {
     triggerThreshold: number;
     signature: string;
     userIdleScore: number;
+    interruptActiveResponse?: boolean;
+    currentResponseScore?: number;
   }): { decision: "drop" | "cooldown" | "trigger"; reasons: string[]; noveltyScore: number } {
     const reasons: string[] = [];
     const noveltyScore = this.getNoveltyScore(params.signature);
@@ -29,6 +39,16 @@ export class TriggerQueue {
     if (params.finalScore < params.triggerThreshold) {
       reasons.push("below_trigger_threshold");
       return { decision: "drop", reasons, noveltyScore };
+    }
+
+    if (
+      params.interruptActiveResponse === true &&
+      typeof params.currentResponseScore === "number" &&
+      params.finalScore > params.currentResponseScore
+    ) {
+      this.recordTrigger(params.nowMs, params.signature, params.userIdleScore);
+      reasons.push("interrupt_active_reply");
+      return { decision: "trigger", reasons, noveltyScore };
     }
 
     if (params.nowMs - this.lastTriggerAtMs < this.config.globalCooldownMs) {
@@ -50,15 +70,7 @@ export class TriggerQueue {
       return { decision: "cooldown", reasons, noveltyScore };
     }
 
-    this.lastTriggerAtMs = params.nowMs;
-    if (params.userIdleScore < 0.35) {
-      this.lastBusyTriggerAtMs = params.nowMs;
-    }
-    this.recent.unshift({
-      atMs: params.nowMs,
-      signature: params.signature
-    });
-    this.recent = this.recent.slice(0, this.config.recentCacheSize);
+    this.recordTrigger(params.nowMs, params.signature, params.userIdleScore);
     reasons.push("trigger_ready");
     return { decision: "trigger", reasons, noveltyScore };
   }
@@ -80,6 +92,18 @@ export class TriggerQueue {
 
   private findSimilarRecent(signature: string): TriggerMemory | undefined {
     return this.recent.find((item) => hammingDistance(item.signature, signature) <= 4);
+  }
+
+  private recordTrigger(nowMs: number, signature: string, userIdleScore: number): void {
+    this.lastTriggerAtMs = nowMs;
+    if (userIdleScore < 0.35) {
+      this.lastBusyTriggerAtMs = nowMs;
+    }
+    this.recent.unshift({
+      atMs: nowMs,
+      signature
+    });
+    this.recent = this.recent.slice(0, this.config.recentCacheSize);
   }
 }
 

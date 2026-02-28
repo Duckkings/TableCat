@@ -16,6 +16,7 @@ export interface AppConfig {
   enable_system_audio?: boolean;
   screen_attention_enabled?: boolean;
   screen_gate_tick_ms?: number;
+  screen_active_sampling_enabled?: boolean;
   screen_thumb_width?: number;
   screen_thumb_height?: number;
   screen_l0_visual_delta_threshold?: number;
@@ -28,6 +29,8 @@ export interface AppConfig {
   screen_busy_cooldown_sec?: number;
   screen_recent_cache_size?: number;
   screen_debug_save_gate_frames?: boolean;
+  active_companion_enabled?: boolean;
+  active_companion_interval_min?: number;
 }
 
 export interface AppConfigPatch {
@@ -40,6 +43,7 @@ export interface AppConfigPatch {
   enable_system_audio?: boolean;
   screen_attention_enabled?: boolean;
   screen_gate_tick_ms?: number;
+  screen_active_sampling_enabled?: boolean;
   screen_thumb_width?: number;
   screen_thumb_height?: number;
   screen_l0_visual_delta_threshold?: number;
@@ -52,6 +56,8 @@ export interface AppConfigPatch {
   screen_busy_cooldown_sec?: number;
   screen_recent_cache_size?: number;
   screen_debug_save_gate_frames?: boolean;
+  active_companion_enabled?: boolean;
+  active_companion_interval_min?: number;
 }
 
 const DEFAULT_CONFIG_PATH = path.join(process.cwd(), "app.config.json");
@@ -82,13 +88,14 @@ export function updateAppConfig(
   const next: AppConfig = { ...current };
 
   assignNumberPatch(next, patch, "bubble_timeout_sec", 0, 600);
-  assignIntegerPatch(next, patch, "perception_interval_sec", 5, 30);
+  assignIntegerPatch(next, patch, "perception_interval_sec", 1, 30);
   assignBooleanPatch(next, patch, "enable_perception_loop");
   assignBooleanPatch(next, patch, "enable_screen");
   assignBooleanPatch(next, patch, "enable_mic");
   assignBooleanPatch(next, patch, "enable_system_audio");
   assignBooleanPatch(next, patch, "screen_attention_enabled");
-  assignIntegerPatch(next, patch, "screen_gate_tick_ms", 200, 5000);
+  assignIntegerPatch(next, patch, "screen_gate_tick_ms", 100, 5000);
+  assignBooleanPatch(next, patch, "screen_active_sampling_enabled");
   assignIntegerPatch(next, patch, "screen_thumb_width", 16, 1920);
   assignIntegerPatch(next, patch, "screen_thumb_height", 16, 1080);
   assignNumberPatch(next, patch, "screen_l0_visual_delta_threshold", 0, 1);
@@ -96,11 +103,13 @@ export function updateAppConfig(
   assignNumberPatch(next, patch, "screen_l0_input_intensity_threshold", 0, 1);
   assignNumberPatch(next, patch, "screen_l1_cluster_threshold", 0, 1);
   assignNumberPatch(next, patch, "screen_trigger_threshold", 0, 1);
-  assignIntegerPatch(next, patch, "screen_global_cooldown_sec", 0, 600);
+  assignIntegerPatch(next, patch, "screen_global_cooldown_sec", 1, 600);
   assignIntegerPatch(next, patch, "screen_same_topic_cooldown_sec", 0, 600);
   assignIntegerPatch(next, patch, "screen_busy_cooldown_sec", 0, 600);
   assignIntegerPatch(next, patch, "screen_recent_cache_size", 1, 200);
   assignBooleanPatch(next, patch, "screen_debug_save_gate_frames");
+  assignBooleanPatch(next, patch, "active_companion_enabled");
+  assignIntegerPatch(next, patch, "active_companion_interval_min", 1, 120);
 
   if (patch.role_card_path !== undefined) {
     if (typeof patch.role_card_path !== "string" || patch.role_card_path.trim() === "") {
@@ -131,13 +140,14 @@ function parseAppConfig(raw: string): AppConfig {
   }
 
   normalizeOptionalNumber(parsed, "bubble_timeout_sec", 0, 600, false);
-  normalizeOptionalNumber(parsed, "perception_interval_sec", 5, 30, true);
+  normalizeOptionalNumber(parsed, "perception_interval_sec", 1, 30, true);
   normalizeOptionalBoolean(parsed, "enable_perception_loop");
   normalizeOptionalBoolean(parsed, "enable_screen");
   normalizeOptionalBoolean(parsed, "enable_mic");
   normalizeOptionalBoolean(parsed, "enable_system_audio");
   normalizeOptionalBoolean(parsed, "screen_attention_enabled");
-  normalizeOptionalNumber(parsed, "screen_gate_tick_ms", 200, 5000, true);
+  normalizeOptionalNumber(parsed, "screen_gate_tick_ms", 100, 5000, true);
+  normalizeOptionalBoolean(parsed, "screen_active_sampling_enabled");
   normalizeOptionalNumber(parsed, "screen_thumb_width", 16, 1920, true);
   normalizeOptionalNumber(parsed, "screen_thumb_height", 16, 1080, true);
   normalizeOptionalNumber(parsed, "screen_l0_visual_delta_threshold", 0, 1, false);
@@ -145,11 +155,13 @@ function parseAppConfig(raw: string): AppConfig {
   normalizeOptionalNumber(parsed, "screen_l0_input_intensity_threshold", 0, 1, false);
   normalizeOptionalNumber(parsed, "screen_l1_cluster_threshold", 0, 1, false);
   normalizeOptionalNumber(parsed, "screen_trigger_threshold", 0, 1, false);
-  normalizeOptionalNumber(parsed, "screen_global_cooldown_sec", 0, 600, true);
+  normalizeOptionalNumber(parsed, "screen_global_cooldown_sec", 1, 600, true);
   normalizeOptionalNumber(parsed, "screen_same_topic_cooldown_sec", 0, 600, true);
   normalizeOptionalNumber(parsed, "screen_busy_cooldown_sec", 0, 600, true);
   normalizeOptionalNumber(parsed, "screen_recent_cache_size", 1, 200, true);
   normalizeOptionalBoolean(parsed, "screen_debug_save_gate_frames");
+  normalizeOptionalBoolean(parsed, "active_companion_enabled");
+  normalizeOptionalNumber(parsed, "active_companion_interval_min", 1, 120, true);
 
   return parsed as AppConfig;
 }
