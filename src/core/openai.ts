@@ -1,11 +1,17 @@
+import { readFileSync } from "fs";
 import { spawn } from "child_process";
-import { ModelRequest } from "../shared/types";
+import { ModelRequest, PerceptionInput } from "../shared/types";
 import { logError, logInfo } from "./logger";
+import { buildFormattedInput, buildMemoryBlock } from "./prompts";
 
 export interface OpenAIConfig {
   apiKey: string;
   model: string;
 }
+
+type ChatMessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 
 export async function requestModel(
   config: OpenAIConfig,
@@ -14,7 +20,10 @@ export async function requestModel(
   logInfo(`OpenAI request model=${config.model}`);
   const payload = JSON.stringify({
     model: config.model,
-    messages: buildMessages(request)
+    messages: buildMessages(request),
+    response_format: {
+      type: "json_object"
+    }
   });
 
   let response: Response;
@@ -22,7 +31,7 @@ export async function requestModel(
     response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json"
       },
       body: payload
@@ -59,7 +68,7 @@ export async function testOpenAIConnection(config: OpenAIConfig): Promise<void> 
     const response = await fetch("https://api.openai.com/v1/models", {
       method: "GET",
       headers: {
-        "Authorization": `Bearer ${config.apiKey}`
+        Authorization: `Bearer ${config.apiKey}`
       }
     });
     if (!response.ok) {
@@ -168,16 +177,47 @@ function runPowerShell(script: string): Promise<string> {
 }
 
 function buildMessages(request: ModelRequest) {
-  const memoryText = request.memory ? `\n记忆: ${request.memory}` : "";
-  const inputs = request.inputs
-    .map((input) => `[source:${input.source}] ${input.content}`)
-    .join("\n");
-
   const systemContent = `${request.default_prompt}\n${request.role_prompt}`;
-  const userContent = `${inputs}${memoryText}`;
+  const userContent = buildUserContentParts(request.inputs, request.memory);
 
   return [
     { role: "system", content: systemContent },
     { role: "user", content: userContent }
   ];
+}
+
+function buildUserContentParts(
+  inputs: PerceptionInput[],
+  memory?: string
+): ChatMessageContentPart[] {
+  const parts: ChatMessageContentPart[] = [];
+
+  for (const input of inputs) {
+    parts.push({
+      type: "text",
+      text: buildFormattedInput(input)
+    });
+    if (input.source === "screen" && input.image_path) {
+      parts.push({
+        type: "image_url",
+        image_url: {
+          url: buildImageDataUrl(input.image_path, input.image_mime_type ?? "image/png")
+        }
+      });
+    }
+  }
+
+  if (memory) {
+    parts.push({
+      type: "text",
+      text: buildMemoryBlock(memory)
+    });
+  }
+
+  return parts;
+}
+
+function buildImageDataUrl(filePath: string, mimeType: string): string {
+  const base64 = readFileSync(filePath).toString("base64");
+  return `data:${mimeType};base64,${base64}`;
 }

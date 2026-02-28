@@ -1,6 +1,6 @@
-﻿# TableCat 脚本接口与协议说明
+# TableCat 脚本接口与协议说明
 
-更新时间：2026-02-27
+更新时间：2026-02-28
 适用代码：`src/` 当前实现
 
 ## 1. 边界与约定
@@ -57,7 +57,12 @@
 ```json
 // ModelRequest
 {
-  "inputs": [{ "source": "screen|mic|system_audio", "content": "string" }],
+  "inputs": [{
+    "source": "screen|mic|system_audio",
+    "content": "string",
+    "image_path": "string?",
+    "image_mime_type": "string?"
+  }],
   "memory": "string?",
   "role_prompt": "string",
   "default_prompt": "string"
@@ -115,6 +120,11 @@
   - 响应：`{ ok: true }`
   - 行为：用轻量模型请求验证 API 可用性
 
+- `debug:open-screenshot-folder`
+  - 请求：无
+  - 响应：`{ path: string }`
+  - 行为：打开本次启动对应的截图调试目录
+
 ### 3.2 主进程广播事件
 - `bubble:update`
   - 载荷：`string`
@@ -147,6 +157,7 @@
 - `updateConfig(patch)` -> Promise<AppConfig>
 - `sendChatMessage(text)` -> Promise<ModelResponse>
 - `testApiConnection()` -> Promise<{ ok: true }>
+- `openScreenshotFolder()` -> Promise<{ path: string }>
 - `requestFirstGreeting(config)` -> Promise<ModelResponse>
 - `requestModel(config, request)` -> Promise<ModelResponse>
 - `onBubbleUpdate(handler)` -> 订阅 `bubble:update`
@@ -185,6 +196,7 @@
 - 协议：
   - 默认走 `fetch`
   - Windows `fetch` 失败时回退 PowerShell
+  - 支持 `source:screen` 附带图片输入
   - 请求端点：`/v1/chat/completions`（业务）、`/v1/models`（连通性测试）
 
 ### 5.7 `src/core/responseParser.ts`
@@ -206,31 +218,39 @@
 - `start(onBatch)` / `stop()`
 - 协议：按固定间隔回调，不做并发保护（并发由上层控制）。
 
-### 5.11 `src/core/logger.ts`
+### 5.11 `src/core/perception/screenCapture.ts`
+- `captureScreenPerceptionInput() => Promise<PerceptionInput>`
+- `openScreenshotSessionFolder() => Promise<string>`
+- 协议：真实桌面截图落盘到 `LOG/screenshots/<启动时间>/`，并将图片作为 `source:screen` 的附加输入上传给模型。
+
+### 5.12 `src/core/logger.ts`
 - `logInfo(message)` / `logError(message, error?)`
 - 协议：日志落盘 `LOG/app.log`。
 
-### 5.12 `src/core/settings.ts`
+### 5.13 `src/core/settings.ts`
 - `DEFAULT_SETTINGS`：默认应用设置常量。
 
-### 5.13 `src/shared/defaults.ts`
-- `DEFAULT_ROLE_PROMPT`：默认系统提示词模板（结构化 JSON 要求）。
+### 5.14 `src/core/prompts.ts`
+- 负责读取 `prompts.csv` 并提供默认系统提示、首次问候、三路感知输入模板、记忆块与 API 测试提示。
 
-### 5.14 `src/shared/types.ts`
+### 5.15 `prompts.csv`
+- 可编辑的基础 prompt 表；修改后会在后续请求中重新读取生效。
+
+### 5.16 `src/shared/types.ts`
 - 全局类型协议定义：`RoleCard`、`PerceptionInput`、`ModelRequest`、`ModelResponse` 等。
 
-### 5.15 `src/preload.js`
+### 5.17 `src/preload.js`
 - 职责：把 IPC 包装为 `window.tablecat`。
 - 协议：渲染层不得直接访问 `ipcRenderer`。
 
-### 5.16 `src/app/renderer.js`
+### 5.18 `src/app/renderer.js`
 - 职责：UI 交互与状态管理（气泡、设置、历史、聊天）。
 - 依赖协议：
   - 必须存在 `window.tablecat` API
   - 必须接收 `ui:config`/`bubble:update`/`pet:icon`
   - 依赖 `index.html` 中固定 DOM id
 
-### 5.17 `src/app/index.html`
+### 5.19 `src/app/index.html`
 - 职责：桌宠 UI 容器、设置面板、聊天面板、历史面板。
 - 依赖协议：DOM id 不可随意改名（由 `renderer.js` 绑定）。
 

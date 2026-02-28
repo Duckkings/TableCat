@@ -1,4 +1,4 @@
-﻿export type PerceptionSource = "screen" | "mic" | "system_audio";
+export type PerceptionSource = "screen" | "mic" | "system_audio";
 
 export interface RoleCard {
   name: string;
@@ -13,6 +13,8 @@ export interface RoleCard {
 export interface PerceptionInput {
   source: PerceptionSource;
   content: string;
+  image_path?: string;
+  image_mime_type?: string;
 }
 
 export interface ModelRequest {
@@ -42,4 +44,19 @@ export interface AppSettings {
 export interface MemoryWriteback {
   role_card_path: string;
   memory_summary: string;
+}
+
+export interface ScreenAttentionDebugState {
+  active: boolean;
+  finalScore: number;
+  excitementScore: number;
+  interruptScore: number;
+  noveltyScore: number;
+  visualDelta: number;
+  hashDistance: number;
+  clusterScore: number;
+  l0Pass: boolean;
+  l1Pass: boolean;
+  decision: "idle" | "drop" | "cooldown" | "trigger";
+  reasons: string[];
 }

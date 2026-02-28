@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -7,10 +7,11 @@
     <style>
       body {
         margin: 0;
-        font-family: "Segoe UI", sans-serif;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
         background: transparent;
         color: #1c1c1c;
       }
+
       .pet-container {
         width: 100vw;
         height: 100vh;
@@ -20,269 +21,296 @@
         padding-bottom: 24px;
         box-sizing: border-box;
       }
+
       .pet-panel {
-        width: 140px;
-        height: 180px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.7);
-        border: 1px solid rgba(0, 0, 0, 0.12);
+        width: 150px;
+        height: 190px;
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: center;
-        position: relative;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
         -webkit-app-region: drag;
       }
-      .settings-button {
-        position: absolute;
-        top: 6px;
-        left: 6px;
-        width: 28px;
-        height: 24px;
-        border-radius: 6px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        background: rgba(255, 255, 255, 0.9);
-        font-size: 11px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        -webkit-app-region: no-drag;
-        pointer-events: auto;
-        z-index: 20;
-      }
-      .history-button {
-        position: absolute;
-        top: 6px;
-        right: 6px;
-        width: 28px;
-        height: 24px;
-        border-radius: 6px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        background: rgba(255, 255, 255, 0.9);
-        font-size: 11px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        -webkit-app-region: no-drag;
-        pointer-events: auto;
-        z-index: 20;
-      }
-      .pet-panel:hover .settings-button {
-        opacity: 1;
-      }
-      .pet-panel:hover .history-button {
-        opacity: 1;
-      }
+
       .pet-icon {
-        width: 120px;
-        height: 120px;
+        width: 122px;
+        height: 122px;
         object-fit: contain;
         display: none;
       }
-      .bubble {
+
+      .panel-button {
         position: absolute;
-        bottom: 200px;
-        max-width: 240px;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.92);
-        border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        font-size: 12px;
-        line-height: 1.4;
+        top: 8px;
+        width: 28px;
+        height: 24px;
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.94);
+        font-size: 11px;
+        cursor: pointer;
+        z-index: 20;
         -webkit-app-region: no-drag;
       }
-      .history-panel {
-        position: absolute;
-        bottom: 200px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 260px;
-        max-height: 200px;
-        padding: 8px 10px;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        font-size: 12px;
-        line-height: 1.4;
-        overflow-y: auto;
-        display: none;
-        -webkit-app-region: no-drag;
+
+      .settings-button {
+        left: 8px;
       }
-      .history-panel.visible {
-        display: block;
+
+      .history-button {
+        right: 8px;
       }
-      .settings-panel {
-        position: absolute;
-        bottom: 200px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 260px;
-        padding: 10px;
-        background: rgba(255, 255, 255, 0.97);
-        border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        font-size: 12px;
-        line-height: 1.4;
-        display: none;
-        -webkit-app-region: no-drag;
-      }
-      .settings-panel.visible {
-        display: block;
-      }
+
+      .bubble,
+      .history-panel,
+      .settings-panel,
       .chat-panel {
         position: absolute;
-        bottom: 200px;
         left: 50%;
         transform: translateX(-50%);
-        width: 280px;
-        height: 230px;
-        background: rgba(255, 255, 255, 0.97);
-        border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        display: none;
-        flex-direction: column;
-        padding: 8px;
-        box-sizing: border-box;
         -webkit-app-region: no-drag;
       }
-      .chat-panel.visible {
-        display: flex;
+
+      .bubble {
+        bottom: 212px;
+        max-width: 260px;
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 1.45;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
       }
-      .chat-header {
+
+      .history-panel,
+      .settings-panel {
+        bottom: 212px;
+        width: 272px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.97);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+        display: none;
+      }
+
+      .history-panel.visible,
+      .settings-panel.visible,
+      .chat-panel.visible {
+        display: block;
+      }
+
+      .history-panel {
+        max-height: 220px;
+        padding: 8px 10px;
+        overflow-y: auto;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .chat-panel {
+        bottom: 212px;
+        width: 288px;
+        height: 236px;
+        padding: 8px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.97);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+        box-sizing: border-box;
+        display: none;
+      }
+
+      .chat-header,
+      .settings-actions {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 6px;
       }
-      .chat-title {
+
+      .chat-title,
+      .settings-title,
+      .history-title {
         font-size: 11px;
-        color: rgba(0, 0, 0, 0.6);
+        color: rgba(0, 0, 0, 0.58);
+        margin-bottom: 8px;
       }
-      .chat-close {
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.95);
-        font-size: 11px;
-        padding: 0 6px;
+
+      .chat-close,
+      .settings-action,
+      .chat-send {
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.96);
         cursor: pointer;
-        opacity: 0.92;
       }
+
+      .chat-close,
+      .settings-action {
+        font-size: 12px;
+        padding: 3px 8px;
+      }
+
       .chat-log {
-        flex: 1;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        border-radius: 8px;
-        padding: 6px;
+        height: 156px;
         overflow-y: auto;
-        background: rgba(255, 255, 255, 0.85);
+        padding: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.88);
       }
+
       .chat-msg {
+        margin-bottom: 6px;
         font-size: 12px;
         line-height: 1.4;
-        margin-bottom: 6px;
         word-break: break-word;
       }
-      .chat-msg:last-child {
+
+      .chat-msg:last-child,
+      .history-item:last-child {
         margin-bottom: 0;
       }
+
       .chat-msg-user {
-        color: #1f4b89;
+        color: #22548d;
       }
+
       .chat-msg-assistant {
         color: #1c1c1c;
       }
+
       .chat-msg-system {
         color: #8a3e3e;
       }
+
       .chat-input-row {
         display: flex;
         gap: 6px;
-        margin-top: 6px;
+        margin-top: 8px;
       }
-      .chat-input {
-        flex: 1;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        padding: 4px 6px;
+
+      .chat-input,
+      .settings-input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 7px;
+        padding: 5px 7px;
         font-size: 12px;
+        background: rgba(255, 255, 255, 0.98);
       }
+
       .chat-send {
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.95);
-        padding: 4px 10px;
+        padding: 5px 10px;
         font-size: 12px;
-        cursor: pointer;
       }
-      .settings-title {
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.6);
-        margin-bottom: 8px;
+
+      .settings-panel {
+        padding: 10px;
+        box-sizing: border-box;
       }
+
       .settings-row {
         display: flex;
         align-items: center;
         gap: 8px;
         margin-bottom: 8px;
       }
-      .settings-row:last-of-type {
-        margin-bottom: 0;
-      }
+
       .settings-label {
-        min-width: 86px;
+        min-width: 92px;
       }
-      .settings-input {
-        width: 100%;
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        padding: 4px 6px;
-        font-size: 12px;
-        box-sizing: border-box;
-      }
+
       .settings-check {
         width: 16px;
         height: 16px;
       }
+
       .settings-actions {
-        display: flex;
+        flex-wrap: wrap;
         justify-content: flex-end;
         gap: 8px;
         margin-top: 10px;
       }
-      .settings-action {
-        border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.95);
-        padding: 2px 8px;
-        font-size: 12px;
-        cursor: pointer;
-      }
-      .history-title {
-        font-size: 11px;
-        color: rgba(0, 0, 0, 0.6);
-        margin-bottom: 6px;
-      }
+
       .history-item {
         margin-bottom: 6px;
       }
-      .history-item:last-child {
-        margin-bottom: 0;
-      }
+
       .spinner {
         position: absolute;
         top: -18px;
         left: -18px;
         width: 14px;
         height: 14px;
-        border: 2px solid rgba(0, 0, 0, 0.2);
-        border-top-color: rgba(0, 0, 0, 0.6);
+        border: 2px solid rgba(0, 0, 0, 0.18);
+        border-top-color: rgba(0, 0, 0, 0.64);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
         display: none;
       }
+
+      .score-badge {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        background: rgba(9, 20, 34, 0.88);
+        color: #f4f7fb;
+        font-size: 10px;
+        line-height: 1.35;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        -webkit-app-region: no-drag;
+      }
+
+      .score-badge-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .score-badge-title {
+        font-size: 9px;
+        text-transform: uppercase;
+        opacity: 0.72;
+      }
+
+      .score-badge-decision {
+        font-weight: 700;
+      }
+
+      .score-badge.score-trigger {
+        background: rgba(24, 93, 62, 0.9);
+      }
+
+      .score-badge.score-cooldown {
+        background: rgba(112, 77, 12, 0.9);
+      }
+
+      .score-badge.score-drop {
+        background: rgba(64, 67, 74, 0.88);
+      }
+
+      .score-badge.score-idle {
+        background: rgba(31, 43, 58, 0.82);
+      }
+
       @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+        from {
+          transform: rotate(0deg);
+        }
+
+        to {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>
@@ -290,24 +318,38 @@
     <div class="pet-container">
       <div class="pet-panel" id="petPanel">
         <div class="spinner" id="spinner"></div>
-        <button class="settings-button" id="settingsButton" type="button">设</button>
-        <button class="history-button" id="historyButton" type="button">记</button>
+        <button class="panel-button settings-button" id="settingsButton" type="button">设</button>
+        <button class="panel-button history-button" id="historyButton" type="button">记</button>
         <img class="pet-icon" id="petIcon" alt="pet" />
+        <div class="score-badge score-idle" id="scoreBadge">
+          <div class="score-badge-row">
+            <span class="score-badge-title">Gate</span>
+            <span class="score-badge-decision" id="scoreDecision">IDLE</span>
+          </div>
+          <div class="score-badge-row">
+            <span id="scoreSummary">S 0.00</span>
+            <span id="scoreL0L1">L0 x L1 x</span>
+          </div>
+          <div id="scoreReason">waiting_for_frame</div>
+        </div>
+
         <div class="history-panel" id="historyPanel">
           <div class="history-title">回复记录</div>
           <div id="historyList"></div>
         </div>
+
         <div class="chat-panel" id="chatPanel">
           <div class="chat-header">
             <div class="chat-title">互动聊天</div>
-            <button class="chat-close" id="chatCloseBtn">收起</button>
+            <button class="chat-close" id="chatCloseBtn" type="button">收起</button>
           </div>
           <div class="chat-log" id="chatLog"></div>
           <div class="chat-input-row">
-            <input class="chat-input" id="chatInput" type="text" placeholder="输入内容并回车" />
-            <button class="chat-send" id="chatSendBtn">发送</button>
+            <input class="chat-input" id="chatInput" type="text" placeholder="输入内容后回车" />
+            <button class="chat-send" id="chatSendBtn" type="button">发送</button>
           </div>
         </div>
+
         <div class="settings-panel" id="settingsPanel">
           <div class="settings-title">设置</div>
           <div class="settings-row">
@@ -315,7 +357,7 @@
             <input class="settings-input" id="roleCardPathInput" type="text" />
           </div>
           <div class="settings-row">
-            <div class="settings-label">气泡消失秒数</div>
+            <div class="settings-label">气泡秒数</div>
             <input class="settings-input" id="bubbleTimeoutInput" type="number" min="0" step="1" />
           </div>
           <div class="settings-row">
@@ -323,7 +365,7 @@
             <input class="settings-check" id="enablePerceptionLoopInput" type="checkbox" />
           </div>
           <div class="settings-row">
-            <div class="settings-label">感知间隔(秒)</div>
+            <div class="settings-label">轮询间隔(秒)</div>
             <input class="settings-input" id="perceptionIntervalInput" type="number" min="5" max="30" step="1" />
           </div>
           <div class="settings-row">
@@ -339,12 +381,14 @@
             <input class="settings-check" id="enableSystemAudioInput" type="checkbox" />
           </div>
           <div class="settings-actions">
-            <button class="settings-action" id="settingsTestApiBtn">测 API</button>
-            <button class="settings-action" id="settingsCancelBtn">取消</button>
-            <button class="settings-action" id="settingsSaveBtn">保存</button>
+            <button class="settings-action" id="openScreenshotFolderBtn" type="button">开截图目录</button>
+            <button class="settings-action" id="settingsTestApiBtn" type="button">测 API</button>
+            <button class="settings-action" id="settingsCancelBtn" type="button">取消</button>
+            <button class="settings-action" id="settingsSaveBtn" type="button">保存</button>
           </div>
         </div>
-        <div class="bubble" id="bubble">等待首次问候…</div>
+
+        <div class="bubble" id="bubble">等待首次问候...</div>
       </div>
     </div>
     <script src="renderer.js"></script>

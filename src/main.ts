@@ -1,12 +1,15 @@
-﻿import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import { buildFirstGreetingRequest } from "./core/firstGreeting";
 import { requestModel } from "./core/openai";
-import { handleModelResponse, handleModelError } from "./core/assistant";
+import { handleModelError, handleModelResponse } from "./core/assistant";
 import { loadRoleCard } from "./core/roleCard";
 import { AppConfig, AppConfigPatch, loadAppConfig, updateAppConfig } from "./core/config";
 import { buildModelRequest } from "./core/modelRequest";
+import { openScreenshotSessionFolder } from "./core/perception/screenCapture";
 import { PerceptionScheduler } from "./core/perception/scheduler";
+import { ScreenAttentionLoop } from "./core/perception/attentionLoop";
+import { buildApiTestRequest, buildPlaceholderInput, validatePromptCatalog } from "./core/prompts";
 import { logError, logInfo } from "./core/logger";
 import { ModelRequest, PerceptionInput, RoleCard } from "./shared/types";
 
@@ -14,18 +17,29 @@ let mainWindow: BrowserWindow | null = null;
 let activeRoleCard: RoleCard | null = null;
 let activeRoleCardPath: string | null = null;
 let perceptionScheduler: PerceptionScheduler | null = null;
+let screenAttentionLoop: ScreenAttentionLoop | null = null;
 let perceptionInFlight = false;
 
 function normalizeChineseGreeting(content: string): string {
   if (/[\u4e00-\u9fff]/.test(content)) {
     return content;
   }
-  return "你好呀，我来啦。今天想先做什么？";
+  return "你好，我来了。今天想先做什么？";
 }
 
 function normalizePerceptionInterval(sec: number | undefined): number {
   const value = typeof sec === "number" ? sec : 5;
   return Math.min(30, Math.max(5, Math.floor(value)));
+}
+
+function resolveScreenAttentionEnabled(config: AppConfig): boolean {
+  if (config.enable_screen === false) {
+    return false;
+  }
+  if (typeof config.screen_attention_enabled === "boolean") {
+    return config.screen_attention_enabled;
+  }
+  return config.enable_perception_loop === true;
 }
 
 function buildUiConfig(config: AppConfig) {
@@ -35,21 +49,20 @@ function buildUiConfig(config: AppConfig) {
     perceptionIntervalSec: normalizePerceptionInterval(config.perception_interval_sec),
     enableScreen: config.enable_screen !== false,
     enableMic: config.enable_mic !== false,
-    enableSystemAudio: config.enable_system_audio !== false
+    enableSystemAudio: config.enable_system_audio !== false,
+    screenAttentionEnabled: resolveScreenAttentionEnabled(config)
   };
 }
 
-function buildPlaceholderPerceptionInputs(config: AppConfig): PerceptionInput[] {
+async function buildPerceptionInputs(config: AppConfig): Promise<PerceptionInput[]> {
   const now = new Date().toISOString();
   const inputs: PerceptionInput[] = [];
-  if (config.enable_screen !== false) {
-    inputs.push({ source: "screen", content: `占位截图感知 ${now}` });
-  }
+
   if (config.enable_mic !== false) {
-    inputs.push({ source: "mic", content: `占位麦克风感知 ${now}` });
+    inputs.push(buildPlaceholderInput("mic", now));
   }
   if (config.enable_system_audio !== false) {
-    inputs.push({ source: "system_audio", content: `占位系统音频感知 ${now}` });
+    inputs.push(buildPlaceholderInput("system_audio", now));
   }
   return inputs;
 }
@@ -60,18 +73,26 @@ function restartPerceptionScheduler(config: AppConfig): void {
     perceptionScheduler = null;
   }
   if (!config.enable_perception_loop) {
-    logInfo("Perception loop disabled");
+    logInfo("Perception scheduler disabled");
     return;
   }
+
+  const shouldScheduleAnything =
+    config.enable_mic !== false || config.enable_system_audio !== false;
+  if (!shouldScheduleAnything) {
+    logInfo("Perception scheduler skipped because mic/system_audio are disabled");
+    return;
+  }
+
   const intervalSec = normalizePerceptionInterval(config.perception_interval_sec);
   perceptionScheduler = new PerceptionScheduler(
     intervalSec * 1000,
-    async () => buildPlaceholderPerceptionInputs(config)
+    async () => buildPerceptionInputs(config)
   );
   perceptionScheduler.start((inputs) => {
     void handlePerceptionBatch(config, inputs);
   });
-  logInfo(`Perception loop started interval=${intervalSec}s`);
+  logInfo(`Perception scheduler started interval=${intervalSec}s`);
 }
 
 function stopPerceptionScheduler(): void {
@@ -80,7 +101,49 @@ function stopPerceptionScheduler(): void {
   }
   perceptionScheduler.stop();
   perceptionScheduler = null;
-  logInfo("Perception loop stopped");
+  logInfo("Perception scheduler stopped");
+}
+
+function restartScreenAttention(config: AppConfig): void {
+  stopScreenAttention();
+
+  if (!resolveScreenAttentionEnabled(config)) {
+    mainWindow?.webContents.send("debug:score", {
+      active: false,
+      finalScore: 0,
+      excitementScore: 0,
+      interruptScore: 0,
+      noveltyScore: 0,
+      visualDelta: 0,
+      hashDistance: 0,
+      clusterScore: 0,
+      l0Pass: false,
+      l1Pass: false,
+      decision: "idle",
+      reasons: ["attention_disabled"],
+      ts: new Date().toISOString()
+    });
+    logInfo("Screen attention disabled");
+    return;
+  }
+
+  screenAttentionLoop = new ScreenAttentionLoop(config, {
+    onDebugState: (state) => {
+      mainWindow?.webContents.send("debug:score", state);
+    },
+    onTrigger: async (input) => {
+      await handlePerceptionBatch(config, [input]);
+    }
+  });
+  screenAttentionLoop.start();
+}
+
+function stopScreenAttention(): void {
+  if (!screenAttentionLoop) {
+    return;
+  }
+  screenAttentionLoop.stop();
+  screenAttentionLoop = null;
 }
 
 async function handlePerceptionBatch(config: AppConfig, inputs: PerceptionInput[]): Promise<void> {
@@ -90,6 +153,7 @@ async function handlePerceptionBatch(config: AppConfig, inputs: PerceptionInput[
   if (!activeRoleCard || !activeRoleCardPath) {
     return;
   }
+
   perceptionInFlight = true;
   try {
     logInfo(`Perception tick sources=${inputs.map((item) => item.source).join(",")}`);
@@ -108,7 +172,7 @@ async function handlePerceptionBatch(config: AppConfig, inputs: PerceptionInput[
   }
 }
 
-function createWindow() {
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 320,
     height: 420,
@@ -123,10 +187,62 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, "screen-saver");
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setSkipTaskbar(true);
-
-  const indexPath = path.join(process.cwd(), "src", "app", "index.html");
-  mainWindow.loadFile(indexPath);
+  mainWindow.loadFile(path.join(process.cwd(), "src", "app", "index.html"));
   logInfo("Main window created");
+}
+
+async function initializeAppSession(): Promise<void> {
+  let config: AppConfig | null;
+  let roleCard: RoleCard | null = null;
+
+  try {
+    config = loadAppConfig();
+    if (!config) {
+      mainWindow?.webContents.send("ui:config", { bubbleTimeoutSec: 3 });
+      mainWindow?.webContents.send("bubble:update", "缺少 app.config.json");
+      return;
+    }
+
+    validatePromptCatalog();
+    mainWindow?.webContents.send("ui:config", buildUiConfig(config));
+    roleCard = loadRoleCard(config.role_card_path);
+    activeRoleCard = roleCard;
+    activeRoleCardPath = config.role_card_path;
+    mainWindow?.webContents.send("pet:icon", roleCard.pet_icon_path ?? "");
+  } catch (error) {
+    handleModelError(error);
+    mainWindow?.webContents.send("bubble:update", "配置加载失败");
+    return;
+  }
+
+  try {
+    if (!roleCard) {
+      return;
+    }
+    const request = buildFirstGreetingRequest(roleCard);
+    const raw = await requestModel(
+      { apiKey: config.openai.api_key, model: config.openai.model },
+      request
+    );
+    if (!activeRoleCardPath) {
+      return;
+    }
+    const result = handleModelResponse(raw, activeRoleCardPath, roleCard);
+    activeRoleCard = result.roleCard;
+    mainWindow?.webContents.send(
+      "bubble:update",
+      normalizeChineseGreeting(result.response.content)
+    );
+  } catch (error) {
+    handleModelError(error);
+    mainWindow?.webContents.send(
+      "bubble:update",
+      "首次问候失败：请检查网络或 API 配置"
+    );
+  }
+
+  restartPerceptionScheduler(config);
+  restartScreenAttention(config);
 }
 
 process.on("uncaughtException", (error) => {
@@ -140,51 +256,9 @@ process.on("unhandledRejection", (reason) => {
 app.whenReady().then(() => {
   createWindow();
 
-  mainWindow?.webContents.on("did-finish-load", async () => {
+  mainWindow?.webContents.on("did-finish-load", () => {
     logInfo("Window did-finish-load");
-
-    let config: ReturnType<typeof loadAppConfig>;
-    let card: RoleCard;
-
-    try {
-      config = loadAppConfig();
-      if (!config) {
-        mainWindow?.webContents.send("ui:config", { bubbleTimeoutSec: 3 });
-        mainWindow?.webContents.send("bubble:update", "缺少 app.config.json");
-        return;
-      }
-      mainWindow?.webContents.send("ui:config", buildUiConfig(config));
-      card = loadRoleCard(config.role_card_path);
-      activeRoleCard = card;
-      activeRoleCardPath = config.role_card_path;
-      mainWindow?.webContents.send("pet:icon", card.pet_icon_path ?? "");
-    } catch (error) {
-      handleModelError(error);
-      mainWindow?.webContents.send("bubble:update", "配置加载失败");
-      return;
-    }
-
-    try {
-      const request = buildFirstGreetingRequest(card);
-      const raw = await requestModel(
-        { apiKey: config.openai.api_key, model: config.openai.model },
-        request
-      );
-      if (!activeRoleCardPath) {
-        return;
-      }
-      const result = handleModelResponse(raw, activeRoleCardPath, card);
-      activeRoleCard = result.roleCard;
-      mainWindow?.webContents.send(
-        "bubble:update",
-        normalizeChineseGreeting(result.response.content)
-      );
-    } catch (error) {
-      handleModelError(error);
-      mainWindow?.webContents.send("bubble:update", "首次问候失败：请检查网络或 API 配置");
-    }
-
-    restartPerceptionScheduler(config);
+    void initializeAppSession();
   });
 
   app.on("activate", () => {
@@ -196,6 +270,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   stopPerceptionScheduler();
+  stopScreenAttention();
   if (process.platform !== "darwin") {
     app.quit();
   }
@@ -203,14 +278,15 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   stopPerceptionScheduler();
+  stopScreenAttention();
 });
 
 ipcMain.handle("rolecard:load", (_event, roleCardPath: string) => {
   logInfo(`IPC rolecard:load ${roleCardPath}`);
-  const card = loadRoleCard(roleCardPath);
-  activeRoleCard = card;
+  const roleCard = loadRoleCard(roleCardPath);
+  activeRoleCard = roleCard;
   activeRoleCardPath = roleCardPath;
-  return card;
+  return roleCard;
 });
 
 ipcMain.handle("config:get", () => {
@@ -218,35 +294,34 @@ ipcMain.handle("config:get", () => {
   return loadAppConfig();
 });
 
-ipcMain.handle("config:update", async (
-  _event,
-  patch: AppConfigPatch
-) => {
+ipcMain.handle("config:update", async (_event, patch: AppConfigPatch) => {
   logInfo("IPC config:update");
-  let nextCard: RoleCard | null = null;
+  let nextRoleCard: RoleCard | null = null;
+
   if (patch.role_card_path !== undefined) {
-    nextCard = loadRoleCard(patch.role_card_path);
+    nextRoleCard = loadRoleCard(patch.role_card_path);
   }
 
   const updated = updateAppConfig(patch);
 
-  if (nextCard) {
-    activeRoleCard = nextCard;
+  if (nextRoleCard) {
+    activeRoleCard = nextRoleCard;
     activeRoleCardPath = updated.role_card_path;
-    mainWindow?.webContents.send("pet:icon", nextCard.pet_icon_path ?? "");
+    mainWindow?.webContents.send("pet:icon", nextRoleCard.pet_icon_path ?? "");
   }
 
   mainWindow?.webContents.send("ui:config", buildUiConfig(updated));
   restartPerceptionScheduler(updated);
+  restartScreenAttention(updated);
 
-  if (nextCard && activeRoleCardPath) {
+  if (nextRoleCard && activeRoleCardPath) {
     try {
-      const request = buildFirstGreetingRequest(nextCard);
+      const request = buildFirstGreetingRequest(nextRoleCard);
       const raw = await requestModel(
         { apiKey: updated.openai.api_key, model: updated.openai.model },
         request
       );
-      const result = handleModelResponse(raw, activeRoleCardPath, nextCard);
+      const result = handleModelResponse(raw, activeRoleCardPath, nextRoleCard);
       activeRoleCard = result.roleCard;
       mainWindow?.webContents.send(
         "bubble:update",
@@ -254,7 +329,10 @@ ipcMain.handle("config:update", async (
       );
     } catch (error) {
       handleModelError(error);
-      mainWindow?.webContents.send("bubble:update", "切换成功，但首次问候失败：请检查网络或 API 配置");
+      mainWindow?.webContents.send(
+        "bubble:update",
+        "角色已切换，但首次问候失败：请检查网络或 API 配置"
+      );
     }
   }
 
@@ -302,15 +380,13 @@ ipcMain.handle("chat:send", async (_event, text: string) => {
   if (typeof text !== "string" || text.trim() === "") {
     throw new Error("Chat text is empty");
   }
+
   const config = loadAppConfig();
   if (!config) {
     throw new Error("Missing app.config.json");
   }
 
-  const request = buildModelRequest(
-    [{ source: "mic", content: text.trim() }],
-    activeRoleCard
-  );
+  const request = buildModelRequest([{ source: "mic", content: text.trim() }], activeRoleCard);
   const raw = await requestModel(
     { apiKey: config.openai.api_key, model: config.openai.model },
     request
@@ -329,11 +405,13 @@ ipcMain.handle("api:test-connection", async () => {
   }
   await requestModel(
     { apiKey: config.openai.api_key, model: config.openai.model },
-    {
-      inputs: [{ source: "screen", content: "API 连通性测试，请回复 ok。" }],
-      role_prompt: "你是连接测试助手，只回复 ok。",
-      default_prompt: "只输出纯文本 ok。"
-    }
+    buildApiTestRequest()
   );
   return { ok: true };
+});
+
+ipcMain.handle("debug:open-screenshot-folder", async () => {
+  logInfo("IPC debug:open-screenshot-folder");
+  const folderPath = await openScreenshotSessionFolder();
+  return { path: folderPath };
 });

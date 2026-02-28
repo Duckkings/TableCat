@@ -14,6 +14,20 @@ export interface AppConfig {
   enable_screen?: boolean;
   enable_mic?: boolean;
   enable_system_audio?: boolean;
+  screen_attention_enabled?: boolean;
+  screen_gate_tick_ms?: number;
+  screen_thumb_width?: number;
+  screen_thumb_height?: number;
+  screen_l0_visual_delta_threshold?: number;
+  screen_l0_hash_distance_threshold?: number;
+  screen_l0_input_intensity_threshold?: number;
+  screen_l1_cluster_threshold?: number;
+  screen_trigger_threshold?: number;
+  screen_global_cooldown_sec?: number;
+  screen_same_topic_cooldown_sec?: number;
+  screen_busy_cooldown_sec?: number;
+  screen_recent_cache_size?: number;
+  screen_debug_save_gate_frames?: boolean;
 }
 
 export interface AppConfigPatch {
@@ -24,6 +38,20 @@ export interface AppConfigPatch {
   enable_screen?: boolean;
   enable_mic?: boolean;
   enable_system_audio?: boolean;
+  screen_attention_enabled?: boolean;
+  screen_gate_tick_ms?: number;
+  screen_thumb_width?: number;
+  screen_thumb_height?: number;
+  screen_l0_visual_delta_threshold?: number;
+  screen_l0_hash_distance_threshold?: number;
+  screen_l0_input_intensity_threshold?: number;
+  screen_l1_cluster_threshold?: number;
+  screen_trigger_threshold?: number;
+  screen_global_cooldown_sec?: number;
+  screen_same_topic_cooldown_sec?: number;
+  screen_busy_cooldown_sec?: number;
+  screen_recent_cache_size?: number;
+  screen_debug_save_gate_frames?: boolean;
 }
 
 const DEFAULT_CONFIG_PATH = path.join(process.cwd(), "app.config.json");
@@ -51,17 +79,29 @@ export function updateAppConfig(
     throw error;
   }
 
-  const next: AppConfig = {
-    ...current
-  };
-  if (patch.bubble_timeout_sec !== undefined) {
-    if (typeof patch.bubble_timeout_sec !== "number" || Number.isNaN(patch.bubble_timeout_sec)) {
-      const error = new Error("Invalid bubble_timeout_sec");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.bubble_timeout_sec = patch.bubble_timeout_sec;
-  }
+  const next: AppConfig = { ...current };
+
+  assignNumberPatch(next, patch, "bubble_timeout_sec", 0, 600);
+  assignIntegerPatch(next, patch, "perception_interval_sec", 5, 30);
+  assignBooleanPatch(next, patch, "enable_perception_loop");
+  assignBooleanPatch(next, patch, "enable_screen");
+  assignBooleanPatch(next, patch, "enable_mic");
+  assignBooleanPatch(next, patch, "enable_system_audio");
+  assignBooleanPatch(next, patch, "screen_attention_enabled");
+  assignIntegerPatch(next, patch, "screen_gate_tick_ms", 200, 5000);
+  assignIntegerPatch(next, patch, "screen_thumb_width", 16, 1920);
+  assignIntegerPatch(next, patch, "screen_thumb_height", 16, 1080);
+  assignNumberPatch(next, patch, "screen_l0_visual_delta_threshold", 0, 1);
+  assignIntegerPatch(next, patch, "screen_l0_hash_distance_threshold", 0, 64);
+  assignNumberPatch(next, patch, "screen_l0_input_intensity_threshold", 0, 1);
+  assignNumberPatch(next, patch, "screen_l1_cluster_threshold", 0, 1);
+  assignNumberPatch(next, patch, "screen_trigger_threshold", 0, 1);
+  assignIntegerPatch(next, patch, "screen_global_cooldown_sec", 0, 600);
+  assignIntegerPatch(next, patch, "screen_same_topic_cooldown_sec", 0, 600);
+  assignIntegerPatch(next, patch, "screen_busy_cooldown_sec", 0, 600);
+  assignIntegerPatch(next, patch, "screen_recent_cache_size", 1, 200);
+  assignBooleanPatch(next, patch, "screen_debug_save_gate_frames");
+
   if (patch.role_card_path !== undefined) {
     if (typeof patch.role_card_path !== "string" || patch.role_card_path.trim() === "") {
       const error = new Error("Invalid role_card_path");
@@ -69,52 +109,6 @@ export function updateAppConfig(
       throw error;
     }
     next.role_card_path = patch.role_card_path.trim();
-  }
-  if (patch.perception_interval_sec !== undefined) {
-    if (
-      typeof patch.perception_interval_sec !== "number" ||
-      Number.isNaN(patch.perception_interval_sec) ||
-      !Number.isInteger(patch.perception_interval_sec) ||
-      patch.perception_interval_sec < 5 ||
-      patch.perception_interval_sec > 30
-    ) {
-      const error = new Error("Invalid perception_interval_sec");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.perception_interval_sec = patch.perception_interval_sec;
-  }
-  if (patch.enable_perception_loop !== undefined) {
-    if (typeof patch.enable_perception_loop !== "boolean") {
-      const error = new Error("Invalid enable_perception_loop");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.enable_perception_loop = patch.enable_perception_loop;
-  }
-  if (patch.enable_screen !== undefined) {
-    if (typeof patch.enable_screen !== "boolean") {
-      const error = new Error("Invalid enable_screen");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.enable_screen = patch.enable_screen;
-  }
-  if (patch.enable_mic !== undefined) {
-    if (typeof patch.enable_mic !== "boolean") {
-      const error = new Error("Invalid enable_mic");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.enable_mic = patch.enable_mic;
-  }
-  if (patch.enable_system_audio !== undefined) {
-    if (typeof patch.enable_system_audio !== "boolean") {
-      const error = new Error("Invalid enable_system_audio");
-      logError("Config update failed", error);
-      throw error;
-    }
-    next.enable_system_audio = patch.enable_system_audio;
   }
 
   saveAppConfig(next, configPath);
@@ -135,62 +129,122 @@ function parseAppConfig(raw: string): AppConfig {
     logError("Config validation failed", error);
     throw error;
   }
-  if (parsed.bubble_timeout_sec !== undefined) {
-    const value = typeof parsed.bubble_timeout_sec === "string"
-      ? Number(parsed.bubble_timeout_sec)
-      : parsed.bubble_timeout_sec;
-    if (Number.isNaN(value) || typeof value !== "number") {
-      const error = new Error("Invalid bubble_timeout_sec");
-      logError("Config validation failed", error);
-      throw error;
-    }
-    parsed.bubble_timeout_sec = value;
-  }
-  if (
-    parsed.perception_interval_sec !== undefined &&
-    typeof parsed.perception_interval_sec !== "number"
-  ) {
-    const error = new Error("Invalid perception_interval_sec");
-    logError("Config validation failed", error);
-    throw error;
-  }
-  if (
-    parsed.perception_interval_sec !== undefined &&
-    (
-      !Number.isInteger(parsed.perception_interval_sec) ||
-      parsed.perception_interval_sec < 5 ||
-      parsed.perception_interval_sec > 30
-    )
-  ) {
-    const error = new Error("Invalid perception_interval_sec");
-    logError("Config validation failed", error);
-    throw error;
-  }
-  if (
-    parsed.enable_perception_loop !== undefined &&
-    typeof parsed.enable_perception_loop !== "boolean"
-  ) {
-    const error = new Error("Invalid enable_perception_loop");
-    logError("Config validation failed", error);
-    throw error;
-  }
-  if (parsed.enable_screen !== undefined && typeof parsed.enable_screen !== "boolean") {
-    const error = new Error("Invalid enable_screen");
-    logError("Config validation failed", error);
-    throw error;
-  }
-  if (parsed.enable_mic !== undefined && typeof parsed.enable_mic !== "boolean") {
-    const error = new Error("Invalid enable_mic");
-    logError("Config validation failed", error);
-    throw error;
-  }
-  if (
-    parsed.enable_system_audio !== undefined &&
-    typeof parsed.enable_system_audio !== "boolean"
-  ) {
-    const error = new Error("Invalid enable_system_audio");
-    logError("Config validation failed", error);
-    throw error;
-  }
+
+  normalizeOptionalNumber(parsed, "bubble_timeout_sec", 0, 600, false);
+  normalizeOptionalNumber(parsed, "perception_interval_sec", 5, 30, true);
+  normalizeOptionalBoolean(parsed, "enable_perception_loop");
+  normalizeOptionalBoolean(parsed, "enable_screen");
+  normalizeOptionalBoolean(parsed, "enable_mic");
+  normalizeOptionalBoolean(parsed, "enable_system_audio");
+  normalizeOptionalBoolean(parsed, "screen_attention_enabled");
+  normalizeOptionalNumber(parsed, "screen_gate_tick_ms", 200, 5000, true);
+  normalizeOptionalNumber(parsed, "screen_thumb_width", 16, 1920, true);
+  normalizeOptionalNumber(parsed, "screen_thumb_height", 16, 1080, true);
+  normalizeOptionalNumber(parsed, "screen_l0_visual_delta_threshold", 0, 1, false);
+  normalizeOptionalNumber(parsed, "screen_l0_hash_distance_threshold", 0, 64, true);
+  normalizeOptionalNumber(parsed, "screen_l0_input_intensity_threshold", 0, 1, false);
+  normalizeOptionalNumber(parsed, "screen_l1_cluster_threshold", 0, 1, false);
+  normalizeOptionalNumber(parsed, "screen_trigger_threshold", 0, 1, false);
+  normalizeOptionalNumber(parsed, "screen_global_cooldown_sec", 0, 600, true);
+  normalizeOptionalNumber(parsed, "screen_same_topic_cooldown_sec", 0, 600, true);
+  normalizeOptionalNumber(parsed, "screen_busy_cooldown_sec", 0, 600, true);
+  normalizeOptionalNumber(parsed, "screen_recent_cache_size", 1, 200, true);
+  normalizeOptionalBoolean(parsed, "screen_debug_save_gate_frames");
+
   return parsed as AppConfig;
+}
+
+function assignBooleanPatch(
+  target: AppConfig,
+  patch: AppConfigPatch,
+  key: keyof AppConfigPatch
+): void {
+  const value = patch[key];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "boolean") {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config update failed", error);
+    throw error;
+  }
+  target[key as keyof AppConfig] = value as never;
+}
+
+function assignIntegerPatch(
+  target: AppConfig,
+  patch: AppConfigPatch,
+  key: keyof AppConfigPatch,
+  min: number,
+  max: number
+): void {
+  const value = patch[key];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "number" || Number.isNaN(value) || !Number.isInteger(value) || value < min || value > max) {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config update failed", error);
+    throw error;
+  }
+  target[key as keyof AppConfig] = value as never;
+}
+
+function assignNumberPatch(
+  target: AppConfig,
+  patch: AppConfigPatch,
+  key: keyof AppConfigPatch,
+  min: number,
+  max: number
+): void {
+  const value = patch[key];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "number" || Number.isNaN(value) || value < min || value > max) {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config update failed", error);
+    throw error;
+  }
+  target[key as keyof AppConfig] = value as never;
+}
+
+function normalizeOptionalBoolean(parsed: Partial<AppConfig>, key: keyof AppConfig): void {
+  const value = parsed[key];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "boolean") {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config validation failed", error);
+    throw error;
+  }
+}
+
+function normalizeOptionalNumber(
+  parsed: Partial<AppConfig>,
+  key: keyof AppConfig,
+  min: number,
+  max: number,
+  integerOnly: boolean
+): void {
+  const value = parsed[key];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config validation failed", error);
+    throw error;
+  }
+  if (integerOnly && !Number.isInteger(value)) {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config validation failed", error);
+    throw error;
+  }
+  if (value < min || value > max) {
+    const error = new Error(`Invalid ${String(key)}`);
+    logError("Config validation failed", error);
+    throw error;
+  }
 }

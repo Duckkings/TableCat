@@ -1,5 +1,5 @@
-﻿import { DEFAULT_ROLE_PROMPT } from "../shared/defaults";
 import { ModelRequest, PerceptionInput, RoleCard } from "../shared/types";
+import { buildDefaultSystemPrompt } from "./prompts";
 
 export function buildModelRequest(
   inputs: PerceptionInput[],
@@ -11,6 +11,6 @@ export function buildModelRequest(
     inputs,
     memory: memoryText,
     role_prompt: roleCard.prompt,
-    default_prompt: DEFAULT_ROLE_PROMPT
+    default_prompt: buildDefaultSystemPrompt()
   };
 }

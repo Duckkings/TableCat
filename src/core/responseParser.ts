@@ -1,4 +1,4 @@
-﻿import { ModelResponse } from "../shared/types";
+import { ModelResponse } from "../shared/types";
 import { logError, logInfo } from "./logger";
 
 export class ResponseParseError extends Error {}
@@ -7,16 +7,22 @@ export function parseModelResponse(raw: string): ModelResponse {
   const trimmed = raw.trim();
   const jsonStart = trimmed.indexOf("{");
   const jsonEnd = trimmed.lastIndexOf("}");
+
   if (jsonStart === -1 || jsonEnd === -1) {
-    const error = new ResponseParseError("Model response is not JSON");
-    logError("Response parse failed", error);
-    throw error;
+    logError("Response parse fell back to plain text", buildRawPreview(trimmed));
+    return buildFallbackResponse(trimmed);
   }
+
   const jsonText = trimmed.slice(jsonStart, jsonEnd + 1);
-  const parsed = JSON.parse(jsonText) as Partial<ModelResponse>;
-  validateResponse(parsed);
-  logInfo("Model response parsed");
-  return parsed as ModelResponse;
+  try {
+    const parsed = JSON.parse(jsonText) as Partial<ModelResponse>;
+    validateResponse(parsed);
+    logInfo("Model response parsed");
+    return parsed as ModelResponse;
+  } catch (error) {
+    logError("Response parse JSON decode failed, falling back to plain text", error);
+    return buildFallbackResponse(trimmed);
+  }
 }
 
 export function validateResponse(parsed: Partial<ModelResponse>): void {
@@ -40,4 +46,19 @@ export function validateResponse(parsed: Partial<ModelResponse>): void {
     logError("Response validation failed", error);
     throw error;
   }
+}
+
+function buildFallbackResponse(raw: string): ModelResponse {
+  const content = raw.trim() || "（空回复）";
+  return {
+    reasoning: "",
+    emotion: "neutral",
+    content,
+    memory_summary: ""
+  };
+}
+
+function buildRawPreview(raw: string): Error {
+  const preview = raw.length > 400 ? `${raw.slice(0, 400)}...` : raw;
+  return new Error(preview || "(empty)");
 }
