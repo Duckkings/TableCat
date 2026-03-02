@@ -54,7 +54,8 @@
   "enable_mic": "boolean?",
   "enable_system_audio": "boolean?",
   "screen_same_topic_cooldown_sec": "integer 0..600?",
-  "screen_busy_cooldown_sec": "integer 0..600?"
+  "screen_busy_cooldown_sec": "integer 0..600?",
+  "screen_send_foreground_window_only": "boolean?"
 }
 ```
 

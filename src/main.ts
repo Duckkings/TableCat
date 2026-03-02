@@ -174,6 +174,7 @@ function buildUiConfig(config: AppConfig, roleCard?: RoleCard | null) {
     screenTriggerThreshold: config.screen_trigger_threshold ?? 0.35,
     screenGlobalCooldownSec: config.screen_global_cooldown_sec ?? 1,
     screenDebugSaveGateFrames: config.screen_debug_save_gate_frames !== false,
+    screenSendForegroundWindowOnly: config.screen_send_foreground_window_only === true,
     activeCompanionEnabled: config.active_companion_enabled === true,
     activeCompanionIntervalMin: config.active_companion_interval_min ?? 7
   };

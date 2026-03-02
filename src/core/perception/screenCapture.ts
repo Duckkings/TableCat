@@ -22,11 +22,7 @@ let captureIndex = 0;
 
 export async function captureScreenPerceptionInput(): Promise<PerceptionInput> {
   ensureSessionDir();
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const capture = await captureScreenImage({
-    width: Math.max(1, Math.floor(primaryDisplay.size.width)),
-    height: Math.max(1, Math.floor(primaryDisplay.size.height))
-  });
+  const capture = await capturePrimaryDisplayImage();
 
   captureIndex += 1;
   const fileName = `${String(captureIndex).padStart(4, "0")}_${buildFileStamp(capture.capturedAt)}.png`;
@@ -72,6 +68,22 @@ export async function captureScreenImage(
     bitmapBuffer: image.toBitmap(),
     image
   };
+}
+
+export async function capturePrimaryDisplayImage(): Promise<CapturedScreenImage> {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const captureWidth = Math.max(
+    1,
+    Math.floor(primaryDisplay.size.width * Math.max(1, primaryDisplay.scaleFactor || 1))
+  );
+  const captureHeight = Math.max(
+    1,
+    Math.floor(primaryDisplay.size.height * Math.max(1, primaryDisplay.scaleFactor || 1))
+  );
+  return captureScreenImage({
+    width: captureWidth,
+    height: captureHeight
+  });
 }
 
 export function cropImageToPngBuffer(

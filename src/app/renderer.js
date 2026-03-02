@@ -27,6 +27,7 @@ const screenActiveSamplingEnabledInput = document.getElementById("screenActiveSa
 const screenTriggerThresholdInput = document.getElementById("screenTriggerThresholdInput");
 const screenGlobalCooldownInput = document.getElementById("screenGlobalCooldownInput");
 const screenDebugSaveGateFramesInput = document.getElementById("screenDebugSaveGateFramesInput");
+const screenSendForegroundWindowOnlyInput = document.getElementById("screenSendForegroundWindowOnlyInput");
 const activeCompanionEnabledInput = document.getElementById("activeCompanionEnabledInput");
 const activeCompanionIntervalMinInput = document.getElementById("activeCompanionIntervalMinInput");
 const enableScreenInput = document.getElementById("enableScreenInput");
@@ -69,6 +70,7 @@ let currentScreenActiveSamplingEnabled = false;
 let currentScreenTriggerThreshold = 0.35;
 let currentScreenGlobalCooldownSec = 1;
 let currentScreenDebugSaveGateFrames = true;
+let currentScreenSendForegroundWindowOnly = false;
 let currentActiveCompanionEnabled = false;
 let currentActiveCompanionIntervalMin = 7;
 let currentEnableScreen = true;
@@ -331,6 +333,7 @@ function applyConfigToInputs() {
   screenTriggerThresholdInput.value = String(currentScreenTriggerThreshold);
   screenGlobalCooldownInput.value = String(currentScreenGlobalCooldownSec);
   screenDebugSaveGateFramesInput.checked = currentScreenDebugSaveGateFrames;
+  screenSendForegroundWindowOnlyInput.checked = currentScreenSendForegroundWindowOnly;
   activeCompanionEnabledInput.checked = currentActiveCompanionEnabled;
   activeCompanionIntervalMinInput.value = String(currentActiveCompanionIntervalMin);
   enableScreenInput.checked = currentEnableScreen;
@@ -356,6 +359,7 @@ async function loadSettings() {
     currentScreenTriggerThreshold = Number(config?.screen_trigger_threshold ?? 0.35);
     currentScreenGlobalCooldownSec = Number(config?.screen_global_cooldown_sec ?? 1);
     currentScreenDebugSaveGateFrames = config?.screen_debug_save_gate_frames !== false;
+    currentScreenSendForegroundWindowOnly = config?.screen_send_foreground_window_only === true;
     currentActiveCompanionEnabled = config?.active_companion_enabled === true;
     currentActiveCompanionIntervalMin = Number(config?.active_companion_interval_min ?? 7);
     currentEnableScreen = config?.enable_screen !== false;
@@ -439,6 +443,9 @@ if (api?.onUiConfig) {
     }
     if (typeof config?.screenDebugSaveGateFrames === "boolean") {
       currentScreenDebugSaveGateFrames = config.screenDebugSaveGateFrames;
+    }
+    if (typeof config?.screenSendForegroundWindowOnly === "boolean") {
+      currentScreenSendForegroundWindowOnly = config.screenSendForegroundWindowOnly;
     }
     if (typeof config?.activeCompanionEnabled === "boolean") {
       currentActiveCompanionEnabled = config.activeCompanionEnabled;
@@ -613,6 +620,7 @@ settingsSaveBtn.addEventListener("click", async () => {
       screen_trigger_threshold: screenTriggerThreshold,
       screen_global_cooldown_sec: screenGlobalCooldownSec,
       screen_debug_save_gate_frames: screenDebugSaveGateFramesInput.checked,
+      screen_send_foreground_window_only: screenSendForegroundWindowOnlyInput.checked,
       active_companion_enabled: activeCompanionEnabledInput.checked,
       active_companion_interval_min: activeCompanionIntervalMin,
       enable_screen: enableScreenInput.checked,
@@ -630,6 +638,7 @@ settingsSaveBtn.addEventListener("click", async () => {
     currentScreenTriggerThreshold = Number(updated?.screen_trigger_threshold ?? screenTriggerThreshold);
     currentScreenGlobalCooldownSec = Number(updated?.screen_global_cooldown_sec ?? screenGlobalCooldownSec);
     currentScreenDebugSaveGateFrames = updated?.screen_debug_save_gate_frames !== false;
+    currentScreenSendForegroundWindowOnly = updated?.screen_send_foreground_window_only === true;
     currentActiveCompanionEnabled = updated?.active_companion_enabled === true;
     currentActiveCompanionIntervalMin = Number(updated?.active_companion_interval_min ?? activeCompanionIntervalMin);
     currentEnableScreen = updated?.enable_screen !== false;

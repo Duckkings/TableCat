@@ -5,6 +5,12 @@ export interface ForegroundWindowInfo {
   title: string;
   processName: string;
   pid: number;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
 }
 
 let cachedInfo: ForegroundWindowInfo | null = null;
@@ -51,6 +57,8 @@ function runForegroundWindowQuery(): Promise<ForegroundWindowInfo | null> {
     "  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
     "  [DllImport(\"user32.dll\", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);",
     "  [DllImport(\"user32.dll\", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);",
+    "  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }",
+    "  [DllImport(\"user32.dll\", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);",
     "}",
     "\"@",
     "$hwnd = [TableCatForeground]::GetForegroundWindow()",
@@ -59,11 +67,21 @@ function runForegroundWindowQuery(): Promise<ForegroundWindowInfo | null> {
     "[TableCatForeground]::GetWindowText($hwnd, $builder, $builder.Capacity) | Out-Null",
     "$pid = 0",
     "[TableCatForeground]::GetWindowThreadProcessId($hwnd, [ref]$pid) | Out-Null",
+    "$rect = New-Object TableCatForeground+RECT",
+    "$hasRect = [TableCatForeground]::GetWindowRect($hwnd, [ref]$rect)",
     "$proc = Get-Process -Id $pid -ErrorAction SilentlyContinue",
     "[PSCustomObject]@{",
     "  title = $builder.ToString()",
     "  processName = if ($proc) { $proc.ProcessName } else { '' }",
     "  pid = [int]$pid",
+    "  bounds = if ($hasRect) {",
+    "    [PSCustomObject]@{",
+    "      x = [int]$rect.Left",
+    "      y = [int]$rect.Top",
+    "      width = [int]([Math]::Max(1, $rect.Right - $rect.Left))",
+    "      height = [int]([Math]::Max(1, $rect.Bottom - $rect.Top))",
+    "    }",
+    "  } else { $null }",
     "} | ConvertTo-Json -Compress"
   ].join("\n");
 
@@ -105,7 +123,18 @@ function runForegroundWindowQuery(): Promise<ForegroundWindowInfo | null> {
       resolve({
         title: String(parsed.title ?? ""),
         processName: String(parsed.processName ?? ""),
-        pid: Number(parsed.pid ?? 0)
+        pid: Number(parsed.pid ?? 0),
+        bounds:
+          parsed.bounds &&
+          typeof parsed.bounds === "object" &&
+          parsed.bounds !== null
+            ? {
+                x: Number((parsed.bounds as { x?: number }).x ?? 0),
+                y: Number((parsed.bounds as { y?: number }).y ?? 0),
+                width: Number((parsed.bounds as { width?: number }).width ?? 0),
+                height: Number((parsed.bounds as { height?: number }).height ?? 0)
+              }
+            : null
       });
     });
 

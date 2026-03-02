@@ -324,6 +324,9 @@ finalScore =
 - ROI 裁剪图
 - 送模图
 
+其中门控阶段使用的是低分辨率缩略图；真正送给模型的 `llm/` 图片默认总是使用主屏原始分辨率截图，再从原图裁出当前 ROI 和历史 ROI。
+若 `screen_send_foreground_window_only` 开启，则 `llm/` 目录中的全局图会从整屏原图切换为当前前台窗口原图。
+
 ### 9.3 指标汇总
 会写入：
 - `tickCount`

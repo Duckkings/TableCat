@@ -29,6 +29,7 @@ export interface AppConfig {
   screen_busy_cooldown_sec?: number;
   screen_recent_cache_size?: number;
   screen_debug_save_gate_frames?: boolean;
+  screen_send_foreground_window_only?: boolean;
   active_companion_enabled?: boolean;
   active_companion_interval_min?: number;
 }
@@ -56,6 +57,7 @@ export interface AppConfigPatch {
   screen_busy_cooldown_sec?: number;
   screen_recent_cache_size?: number;
   screen_debug_save_gate_frames?: boolean;
+  screen_send_foreground_window_only?: boolean;
   active_companion_enabled?: boolean;
   active_companion_interval_min?: number;
 }
@@ -108,6 +110,7 @@ export function updateAppConfig(
   assignIntegerPatch(next, patch, "screen_busy_cooldown_sec", 0, 600);
   assignIntegerPatch(next, patch, "screen_recent_cache_size", 1, 200);
   assignBooleanPatch(next, patch, "screen_debug_save_gate_frames");
+  assignBooleanPatch(next, patch, "screen_send_foreground_window_only");
   assignBooleanPatch(next, patch, "active_companion_enabled");
   assignIntegerPatch(next, patch, "active_companion_interval_min", 1, 120);
 
@@ -160,6 +163,7 @@ function parseAppConfig(raw: string): AppConfig {
   normalizeOptionalNumber(parsed, "screen_busy_cooldown_sec", 0, 600, true);
   normalizeOptionalNumber(parsed, "screen_recent_cache_size", 1, 200, true);
   normalizeOptionalBoolean(parsed, "screen_debug_save_gate_frames");
+  normalizeOptionalBoolean(parsed, "screen_send_foreground_window_only");
   normalizeOptionalBoolean(parsed, "active_companion_enabled");
   normalizeOptionalNumber(parsed, "active_companion_interval_min", 1, 120, true);
 

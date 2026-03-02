@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
-import { powerMonitor, shell } from "electron";
+import { nativeImage, powerMonitor, shell } from "electron";
 import { AppConfig } from "../config";
 import { logError, logInfo } from "../logger";
 import { PerceptionInput } from "../../shared/types";
@@ -22,6 +22,7 @@ import { getForegroundWindowInfo } from "./foregroundWindow";
 import { buildMomentScores, computeUserIdleScore } from "./momentScore";
 import {
   CapturedScreenImage,
+  capturePrimaryDisplayImage,
   captureScreenImage,
   cropImageToPngBuffer,
   savePngBuffer
@@ -51,6 +52,7 @@ interface AttentionLoopDirs {
 interface CaptureHistoryItem {
   atMs: number;
   capture: CapturedScreenImage;
+  llmCapture: CapturedScreenImage | null;
 }
 
 export class ScreenAttentionLoop {
@@ -146,9 +148,10 @@ export class ScreenAttentionLoop {
         width: normalizeInteger(this.config.screen_thumb_width, 160),
         height: normalizeInteger(this.config.screen_thumb_height, 90)
       });
+      const llmCapture = await capturePrimaryDisplayImage();
       const now = capture.capturedAt;
       const snapshot = buildFrameSnapshot(capture.bitmapBuffer, capture.width, capture.height);
-      this.captureHistory.push({ atMs: now.getTime(), capture });
+      this.captureHistory.push({ atMs: now.getTime(), capture, llmCapture });
       this.captureHistory = this.captureHistory.slice(-12);
       const thresholds = buildThresholds(this.config);
       const visualDelta = computeVisualDelta(this.previousFrame, snapshot);
@@ -294,7 +297,7 @@ export class ScreenAttentionLoop {
 
       if (decision === "trigger") {
         try {
-          const input = await this.buildTriggeredInput(candidate, capture);
+          const input = await this.buildTriggeredInput(candidate, capture, foreground);
           logInfo(
             `Screen attention trigger dispatch ` +
             `score=${candidate.scores.finalScore.toFixed(2)} ` +
@@ -307,7 +310,7 @@ export class ScreenAttentionLoop {
         }
       } else if (companionReady) {
         try {
-          const input = await this.buildCompanionInput(candidate, capture);
+          const input = await this.buildCompanionInput(candidate, capture, foreground);
           this.companionTriggerCount += 1;
           this.lastCompanionAtMs = now.getTime();
           logInfo(
@@ -397,11 +400,18 @@ export class ScreenAttentionLoop {
 
   private async buildTriggeredInput(
     candidate: MomentCandidate,
-    capture: CapturedScreenImage
+    capture: CapturedScreenImage,
+    foreground: { bounds: { x: number; y: number; width: number; height: number } | null } | null
   ): Promise<PerceptionInput> {
     const stamp = candidate.ts.replace(/[:.]/g, "-");
-    const globalThumbPath = path.join(this.dirs.llm, `${stamp}_global.png`);
-    savePngBuffer(globalThumbPath, capture.pngBuffer);
+    const currentLlmCapture =
+      this.findCurrentOriginalCapture(candidate.ts) ??
+      await capturePrimaryDisplayImage();
+    const globalPath = path.join(this.dirs.llm, `${stamp}_global.png`);
+    const globalCapture = shouldSendForegroundWindowOnly(this.config) && foreground?.bounds
+      ? cropCaptureToBounds(currentLlmCapture, foreground.bounds)
+      : currentLlmCapture;
+    savePngBuffer(globalPath, globalCapture.pngBuffer);
 
     const roiBox = candidate.roi.boxes[0] ?? {
       x: 0,
@@ -409,23 +419,33 @@ export class ScreenAttentionLoop {
       width: capture.width,
       height: capture.height
     };
+    const scaledRoiBox = scaleRoiBoxToCapture(roiBox, capture, currentLlmCapture);
 
     const currentRoiPath = path.join(this.dirs.llm, `${stamp}_current_roi.png`);
-    savePngBuffer(currentRoiPath, cropImageToPngBuffer(capture, roiBox));
+    savePngBuffer(currentRoiPath, cropImageToPngBuffer(currentLlmCapture, scaledRoiBox));
 
-    const previousCapture = this.findHistoricalCapture(candidate.ts);
+    const previousLlmCapture = this.findHistoricalOriginalCapture(candidate.ts);
     let previousRoiPath: string | null = null;
-    if (previousCapture) {
+    if (previousLlmCapture) {
+      const previousScaledRoiBox = scaleRoiBoxToCapture(roiBox, capture, previousLlmCapture);
       previousRoiPath = path.join(this.dirs.llm, `${stamp}_previous_roi.png`);
-      savePngBuffer(previousRoiPath, cropImageToPngBuffer(previousCapture, roiBox));
+      savePngBuffer(previousRoiPath, cropImageToPngBuffer(previousLlmCapture, previousScaledRoiBox));
     }
 
     const attachments = [
       { path: currentRoiPath, mime_type: "image/png", label: "current_roi" },
       previousRoiPath
-        ? { path: previousRoiPath, mime_type: "image/png", label: "previous_roi" }
+        ? {
+            path: previousRoiPath,
+            mime_type: "image/png",
+            label: "previous_roi_original"
+          }
         : null,
-      { path: globalThumbPath, mime_type: "image/png", label: "global_thumb" }
+      {
+        path: globalPath,
+        mime_type: "image/png",
+        label: shouldSendForegroundWindowOnly(this.config) ? "foreground_window_full" : "global_full"
+      }
     ].filter((item): item is { path: string; mime_type: string; label: string } => item !== null);
 
     const metadataPath = path.join(this.dirs.llm, `${stamp}.json`);
@@ -437,6 +457,23 @@ export class ScreenAttentionLoop {
           decision: candidate.decision,
           finalScore: candidate.scores.finalScore,
           reasons: candidate.reasons,
+          imageSource: "original",
+          globalImageMode: shouldSendForegroundWindowOnly(this.config) ? "foreground_window_only" : "full_desktop",
+          gateCaptureSize: {
+            width: capture.width,
+            height: capture.height
+          },
+          llmCaptureSize: {
+            width: currentLlmCapture.width,
+            height: currentLlmCapture.height
+          },
+          globalCaptureSize: {
+            width: globalCapture.width,
+            height: globalCapture.height
+          },
+          roiBox,
+          scaledRoiBox,
+          foregroundBounds: foreground?.bounds ?? null,
           attachments
         },
         null,
@@ -453,7 +490,9 @@ export class ScreenAttentionLoop {
       content: [
         `门控已触发，时间：${candidate.ts}。`,
         "请优先依据附带图片判断用户当前在做什么，再决定是否需要简短回应。",
-        "附图顺序是：当前 ROI、历史 ROI（如果有）、当前全局缩略图。",
+        shouldSendForegroundWindowOnly(this.config)
+          ? "附图顺序是：当前 ROI 原图裁剪、历史 ROI 原图裁剪（如果有）、当前前台窗口原图。"
+          : "附图顺序是：当前 ROI 原图裁剪、历史 ROI 原图裁剪（如果有）、当前全局原图。",
         `当前决策：${candidate.decision}；评分：${candidate.scores.finalScore.toFixed(2)}。`,
         `触发原因：${candidate.reasons.join("、") || "无"}。`
       ].join(" "),
@@ -461,21 +500,32 @@ export class ScreenAttentionLoop {
     };
   }
 
-  private findHistoricalCapture(ts: string): CapturedScreenImage | null {
+  private findCurrentOriginalCapture(ts: string): CapturedScreenImage | null {
+    const targetMs = new Date(ts).getTime();
+    for (let index = this.captureHistory.length - 1; index >= 0; index -= 1) {
+      const item = this.captureHistory[index];
+      if (Math.abs(item.atMs - targetMs) <= 1000 && item.llmCapture) {
+        return item.llmCapture;
+      }
+    }
+    return null;
+  }
+
+  private findHistoricalOriginalCapture(ts: string): CapturedScreenImage | null {
     const targetMs = new Date(ts).getTime() - 2000;
     let bestMatch: CaptureHistoryItem | null = null;
 
     for (const item of this.captureHistory) {
-      if (item.atMs > targetMs) {
+      if (item.atMs > targetMs || !item.llmCapture) {
         continue;
       }
       bestMatch = item;
     }
 
-    if (bestMatch) {
-      return bestMatch.capture;
+    if (bestMatch?.llmCapture) {
+      return bestMatch.llmCapture;
     }
-    return this.captureHistory.length > 1 ? this.captureHistory[0].capture : null;
+    return null;
   }
 
   private shouldTriggerCompanion(
@@ -506,12 +556,25 @@ export class ScreenAttentionLoop {
 
   private async buildCompanionInput(
     candidate: MomentCandidate,
-    capture: CapturedScreenImage
+    capture: CapturedScreenImage,
+    foreground: { bounds: { x: number; y: number; width: number; height: number } | null } | null
   ): Promise<PerceptionInput> {
     const stamp = `${candidate.ts.replace(/[:.]/g, "-")}_companion`;
+    const llmCapture =
+      this.findCurrentOriginalCapture(candidate.ts) ??
+      await capturePrimaryDisplayImage();
+    const globalCapture = shouldSendForegroundWindowOnly(this.config) && foreground?.bounds
+      ? cropCaptureToBounds(llmCapture, foreground.bounds)
+      : llmCapture;
     const globalPath = path.join(this.dirs.llm, `${stamp}_global.png`);
-    savePngBuffer(globalPath, capture.pngBuffer);
-    const attachments = [{ path: globalPath, mime_type: "image/png", label: "companion_global" }];
+    savePngBuffer(globalPath, globalCapture.pngBuffer);
+    const attachments = [
+      {
+        path: globalPath,
+        mime_type: "image/png",
+        label: shouldSendForegroundWindowOnly(this.config) ? "companion_foreground_window_full" : "companion_global_full"
+      }
+    ];
     const metadataPath = path.join(this.dirs.llm, `${stamp}.json`);
     writeFileSync(
       metadataPath,
@@ -520,7 +583,22 @@ export class ScreenAttentionLoop {
           ts: candidate.ts,
           kind: "active_companion",
           finalScore: candidate.scores.finalScore,
-          reasons: ["active_companion"]
+          reasons: ["active_companion"],
+          imageSource: "original",
+          globalImageMode: shouldSendForegroundWindowOnly(this.config) ? "foreground_window_only" : "full_desktop",
+          gateCaptureSize: {
+            width: capture.width,
+            height: capture.height
+          },
+          llmCaptureSize: {
+            width: llmCapture.width,
+            height: llmCapture.height
+          },
+          globalCaptureSize: {
+            width: globalCapture.width,
+            height: globalCapture.height
+          },
+          foregroundBounds: foreground?.bounds ?? null
         },
         null,
         2
@@ -549,6 +627,55 @@ export class ScreenAttentionLoop {
       logError(`${source} dispatch failed`, error);
     }
   }
+}
+
+function shouldSendForegroundWindowOnly(config: AppConfig): boolean {
+  return config.screen_send_foreground_window_only === true;
+}
+
+function cropCaptureToBounds(
+  capture: CapturedScreenImage,
+  bounds: { x: number; y: number; width: number; height: number }
+): CapturedScreenImage {
+  const normalizedBounds = {
+    x: Math.max(0, Math.floor(bounds.x)),
+    y: Math.max(0, Math.floor(bounds.y)),
+    width: Math.max(1, Math.ceil(bounds.width)),
+    height: Math.max(1, Math.ceil(bounds.height))
+  };
+  const pngBuffer = cropImageToPngBuffer(capture, normalizedBounds);
+  const image = nativeImage.createFromBuffer(pngBuffer);
+
+  return {
+    capturedAt: capture.capturedAt,
+    width: image.getSize().width,
+    height: image.getSize().height,
+    pngBuffer,
+    bitmapBuffer: image.toBitmap(),
+    image
+  };
+}
+
+function scaleRoiBoxToCapture(
+  box: { x: number; y: number; width: number; height: number },
+  sourceCapture: CapturedScreenImage,
+  targetCapture: CapturedScreenImage
+): { x: number; y: number; width: number; height: number } {
+  const scaleX = targetCapture.width / Math.max(1, sourceCapture.width);
+  const scaleY = targetCapture.height / Math.max(1, sourceCapture.height);
+  const x = Math.max(0, Math.floor(box.x * scaleX));
+  const y = Math.max(0, Math.floor(box.y * scaleY));
+  const width = Math.max(1, Math.ceil(box.width * scaleX));
+  const height = Math.max(1, Math.ceil(box.height * scaleY));
+  const maxWidth = Math.max(1, targetCapture.width - x);
+  const maxHeight = Math.max(1, targetCapture.height - y);
+
+  return {
+    x,
+    y,
+    width: Math.min(width, maxWidth),
+    height: Math.min(height, maxHeight)
+  };
 }
 
 function buildThresholds(config: AppConfig): AttentionThresholds {

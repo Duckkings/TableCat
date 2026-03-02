@@ -25,6 +25,7 @@
   "screen_busy_cooldown_sec": 15,
   "screen_recent_cache_size": 30,
   "screen_debug_save_gate_frames": true,
+  "screen_send_foreground_window_only": false,
   "active_companion_enabled": false,
   "active_companion_interval_min": 7
 }
