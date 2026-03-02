@@ -1,5 +1,11 @@
-﻿import { readFileSync, writeFileSync } from "fs";
-import { RoleCard } from "../shared/types";
+import { readFileSync, writeFileSync } from "fs";
+import { MemoryEntry, RoleCard } from "../shared/types";
+import {
+  MAX_ROLE_CARD_SCALE,
+  MIN_ROLE_CARD_SCALE,
+  normalizeMemoryEntries,
+  normalizeRoleCardScale
+} from "./memoryEntry";
 import { logError, logInfo } from "./logger";
 
 export class RoleCardError extends Error {}
@@ -8,9 +14,14 @@ export function loadRoleCard(path: string): RoleCard {
   const raw = readFileSync(path, "utf8");
   const normalized = raw.startsWith("\uFEFF") ? raw.slice(1) : raw;
   const parsed = JSON.parse(normalized) as Partial<RoleCard>;
-  validateRoleCard(parsed);
+  const { roleCard, migrated } = normalizeRoleCard(parsed);
+  validateRoleCard(roleCard);
+  if (migrated) {
+    saveRoleCard(path, roleCard as RoleCard);
+    logInfo(`Role card migrated: ${path}`);
+  }
   logInfo(`Role card loaded: ${path}`);
-  return parsed as RoleCard;
+  return roleCard as RoleCard;
 }
 
 export function saveRoleCard(path: string, roleCard: RoleCard): void {
@@ -19,11 +30,34 @@ export function saveRoleCard(path: string, roleCard: RoleCard): void {
   logInfo(`Role card saved: ${path}`);
 }
 
-export function appendMemory(roleCard: RoleCard, memorySummary: string): RoleCard {
+export function appendMemory(roleCard: RoleCard, memoryEntry: MemoryEntry): RoleCard {
   const memory = roleCard.memory ?? [];
   return {
     ...roleCard,
-    memory: [...memory, memorySummary]
+    memory: [...memory, memoryEntry]
+  };
+}
+
+export function updateRoleCardScale(roleCard: RoleCard, scale: number): RoleCard {
+  return {
+    ...roleCard,
+    scale: normalizeRoleCardScale(scale)
+  };
+}
+
+function normalizeRoleCard(card: Partial<RoleCard>): { roleCard: Partial<RoleCard>; migrated: boolean } {
+  const { entries, migrated } = normalizeMemoryEntries(card.memory);
+  const normalizedScale =
+    card.scale === undefined ? undefined : normalizeRoleCardScale(card.scale);
+  const scaleMigrated = normalizedScale !== card.scale;
+
+  return {
+    roleCard: {
+      ...card,
+      scale: normalizedScale,
+      memory: entries
+    },
+    migrated: migrated || scaleMigrated
   };
 }
 
@@ -43,8 +77,16 @@ function validateRoleCard(card: Partial<RoleCard>): void {
     logError("Role card validation failed", error);
     throw error;
   }
-  if (card.scale !== undefined && typeof card.scale !== "number") {
-    const error = new RoleCardError("Role card scale must be a number");
+  if (
+    card.scale !== undefined &&
+    (typeof card.scale !== "number" ||
+      Number.isNaN(card.scale) ||
+      card.scale < MIN_ROLE_CARD_SCALE ||
+      card.scale > MAX_ROLE_CARD_SCALE)
+  ) {
+    const error = new RoleCardError(
+      `Role card scale must be a number between ${MIN_ROLE_CARD_SCALE} and ${MAX_ROLE_CARD_SCALE}`
+    );
     logError("Role card validation failed", error);
     throw error;
   }
@@ -58,9 +100,21 @@ function validateRoleCard(card: Partial<RoleCard>): void {
     logError("Role card validation failed", error);
     throw error;
   }
-  if (card.memory !== undefined && !Array.isArray(card.memory)) {
-    const error = new RoleCardError("Role card memory must be an array of strings");
-    logError("Role card validation failed", error);
-    throw error;
+  if (card.memory !== undefined) {
+    if (
+      !Array.isArray(card.memory) ||
+      card.memory.some(
+        (item) =>
+          !item ||
+          typeof item !== "object" ||
+          typeof item.返回时间 !== "string" ||
+          typeof item.回复时的心情 !== "string" ||
+          typeof item.记忆内容 !== "string"
+      )
+    ) {
+      const error = new RoleCardError("Role card memory must be an array of structured memory objects");
+      logError("Role card validation failed", error);
+      throw error;
+    }
   }
 }

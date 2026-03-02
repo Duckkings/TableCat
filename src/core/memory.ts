@@ -1,14 +1,21 @@
-﻿import { RoleCard } from "../shared/types";
+import { ModelResponse, RoleCard } from "../shared/types";
+import { buildMemoryEntry } from "./memoryEntry";
 import { appendMemory, saveRoleCard } from "./roleCard";
 import { logInfo } from "./logger";
 
 export function writeMemoryToRoleCard(
   roleCardPath: string,
   roleCard: RoleCard,
-  memorySummary: string
+  response: Pick<ModelResponse, "memory_summary" | "emotion" | "content">
 ): RoleCard {
-  const updated = appendMemory(roleCard, memorySummary);
+  const memoryEntry = buildMemoryEntry(response);
+  if (!memoryEntry) {
+    logInfo("Memory writeback skipped because memory_summary is empty");
+    return roleCard;
+  }
+
+  const updated = appendMemory(roleCard, memoryEntry);
   saveRoleCard(roleCardPath, updated);
-  logInfo("Memory summary written to role card");
+  logInfo("Structured memory written to role card");
   return updated;
 }

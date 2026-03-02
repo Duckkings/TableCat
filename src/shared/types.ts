@@ -1,5 +1,11 @@
 export type PerceptionSource = "screen" | "mic" | "system_audio";
 
+export interface MemoryEntry {
+  返回时间: string;
+  回复时的心情: string;
+  记忆内容: string;
+}
+
 export interface RoleCard {
   name: string;
   prompt: string;
@@ -7,7 +13,7 @@ export interface RoleCard {
   scale?: number;
   wake_word?: string;
   pet_icon_path?: string;
-  memory?: string[];
+  memory?: MemoryEntry[];
 }
 
 export interface PerceptionInput {
@@ -51,7 +57,7 @@ export interface AppSettings {
 
 export interface MemoryWriteback {
   role_card_path: string;
-  memory_summary: string;
+  memory_entry: MemoryEntry;
 }
 
 export interface ScreenAttentionDebugState {

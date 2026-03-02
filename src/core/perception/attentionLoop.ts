@@ -197,6 +197,7 @@ export class ScreenAttentionLoop {
 
       let decision: "idle" | "drop" | "cooldown" | "trigger" = "drop";
       let reasons = [...l0Reasons, ...l1Reasons];
+      let cooldownRemainingMs = this.triggerQueue.getGlobalCooldownRemainingMs(now.getTime());
       const responseState = this.callbacks.getResponseState?.() ?? {
         active: false,
         interruptible: false,
@@ -219,6 +220,7 @@ export class ScreenAttentionLoop {
         });
         decision = queueResult.decision;
         reasons = queueResult.reasons;
+        cooldownRemainingMs = queueResult.cooldownRemainingMs ?? 0;
       }
 
       const candidate: MomentCandidate = {
@@ -261,7 +263,7 @@ export class ScreenAttentionLoop {
         toUiState(candidate, this.config, {
           actualSampleIntervalMs: this.lastTickCompletedAtMs > 0 ? tickStartedAtMs - this.lastTickCompletedAtMs : undefined,
           tickDurationMs: Date.now() - tickStartedAtMs,
-          cooldownRemainingMs: this.triggerQueue.getCooldownRemainingMs(now.getTime()),
+          cooldownRemainingMs,
           lastTriggerAt: this.triggerQueue.getLastTriggerAtMs() > 0
             ? new Date(this.triggerQueue.getLastTriggerAtMs()).toISOString()
             : undefined,
@@ -490,7 +492,7 @@ export class ScreenAttentionLoop {
     if (nowMs - this.lastCompanionAtMs < intervalMin * 60 * 1000) {
       return false;
     }
-    if (this.triggerQueue.getCooldownRemainingMs(nowMs) > 0) {
+    if (this.triggerQueue.getGlobalCooldownRemainingMs(nowMs) > 0) {
       return false;
     }
     if (userIdleScore < 0.8) {
@@ -591,8 +593,8 @@ function resolveNextTickMs(
 function buildTriggerQueueConfig(config: AppConfig): TriggerQueueConfig {
   return {
     globalCooldownMs: normalizeInteger(config.screen_global_cooldown_sec, 1) * 1000,
-    sameTopicCooldownMs: normalizeInteger(config.screen_same_topic_cooldown_sec, 120) * 1000,
-    busyCooldownMs: normalizeInteger(config.screen_busy_cooldown_sec, 180) * 1000,
+    sameTopicCooldownMs: normalizeInteger(config.screen_same_topic_cooldown_sec, 0) * 1000,
+    busyCooldownMs: normalizeInteger(config.screen_busy_cooldown_sec, 0) * 1000,
     recentCacheSize: normalizeInteger(config.screen_recent_cache_size, 30)
   };
 }

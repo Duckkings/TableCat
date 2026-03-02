@@ -96,22 +96,35 @@ async function requestModelViaPowerShell(
 
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    "$OutputEncoding = [System.Text.Encoding]::UTF8",
-    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
     `$apiKey = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${apiKeyBase64}'))`,
     `$payload = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${payloadBase64}'))`,
-    "$headers = @{ Authorization = \"Bearer $apiKey\"; 'Content-Type' = 'application/json' }",
-    "$response = Invoke-RestMethod -Uri 'https://api.openai.com/v1/chat/completions' -Method Post -Headers $headers -Body $payload -TimeoutSec 60",
-    "if (-not $response.choices -or -not $response.choices[0].message.content) { throw 'OpenAI response missing content' }",
-    "Write-Output $response.choices[0].message.content"
+    "$payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)",
+    "Add-Type -AssemblyName System.Net.Http",
+    "$handler = New-Object System.Net.Http.HttpClientHandler",
+    "$client = New-Object System.Net.Http.HttpClient($handler)",
+    "$client.Timeout = [TimeSpan]::FromSeconds(60)",
+    "$request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Post, 'https://api.openai.com/v1/chat/completions')",
+    "$request.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $apiKey)",
+    "$request.Content = New-Object System.Net.Http.ByteArrayContent($payloadBytes)",
+    "$request.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json; charset=utf-8')",
+    "$response = $client.SendAsync($request).GetAwaiter().GetResult()",
+    "if (-not $response.IsSuccessStatusCode) { throw \"OpenAI request failed: $([int]$response.StatusCode)\" }",
+    "$responseBytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()",
+    "$responseJson = [System.Text.Encoding]::UTF8.GetString($responseBytes)",
+    "$data = $responseJson | ConvertFrom-Json",
+    "if (-not $data.choices -or -not $data.choices[0].message.content) { throw 'OpenAI response missing content' }",
+    "$content = [string]$data.choices[0].message.content",
+    "$contentBase64 = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($content))",
+    "Write-Output $contentBase64"
   ].join("\n");
 
-  const content = await runPowerShell(script);
-  if (!content) {
+  const contentBase64 = await runPowerShell(script);
+  if (!contentBase64) {
     const error = new Error("OpenAI response missing content");
     logError("PowerShell OpenAI response missing content", error);
     throw error;
   }
+  const content = Buffer.from(contentBase64, "base64").toString("utf8");
 
   logInfo("OpenAI response received via PowerShell");
   return content;

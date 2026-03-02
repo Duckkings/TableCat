@@ -1,5 +1,6 @@
 const api = window.tablecat;
 
+const petStage = document.getElementById("petStage");
 const petIcon = document.getElementById("petIcon");
 const petPanel = document.getElementById("petPanel");
 const bubble = document.getElementById("bubble");
@@ -15,6 +16,8 @@ const chatInput = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSendBtn");
 const chatCloseBtn = document.getElementById("chatCloseBtn");
 const roleCardPathInput = document.getElementById("roleCardPathInput");
+const panelScaleInput = document.getElementById("panelScaleInput");
+const panelScaleValue = document.getElementById("panelScaleValue");
 const bubbleTimeoutInput = document.getElementById("bubbleTimeoutInput");
 const enablePerceptionLoopInput = document.getElementById("enablePerceptionLoopInput");
 const perceptionIntervalInput = document.getElementById("perceptionIntervalInput");
@@ -49,10 +52,15 @@ const scoreReason = document.getElementById("scoreReason");
 
 const MAX_HISTORY = 100;
 const MAX_CHAT_MESSAGES = 100;
+const MIN_PANEL_SCALE = 1;
+const MAX_PANEL_SCALE = 20;
+const PANEL_SCALE_STEP = 0.1;
 
 let bubbleTimeoutMs = 3000;
 let bubbleTimer = null;
 let currentRoleCardPath = "";
+let currentPanelScale = 1;
+let draftPanelScale = 1;
 let currentEnablePerceptionLoop = false;
 let currentPerceptionIntervalSec = 5;
 let currentScreenAttentionEnabled = false;
@@ -67,6 +75,7 @@ let currentEnableScreen = true;
 let currentEnableMic = true;
 let currentEnableSystemAudio = true;
 let isChatSending = false;
+let scalePersistTimer = null;
 const historyItems = [];
 let pinnedDecisionState = null;
 let pinnedDecisionUntilMs = 0;
@@ -83,6 +92,66 @@ function setPetIcon(path) {
   }
   petIcon.src = path;
   petIcon.style.display = "block";
+}
+
+function normalizePanelScale(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 1;
+  }
+  const rounded = Math.round(value * 10) / 10;
+  return Math.min(MAX_PANEL_SCALE, Math.max(MIN_PANEL_SCALE, rounded));
+}
+
+function updatePanelScaleLabel(scale) {
+  panelScaleValue.textContent = `${scale.toFixed(1)}x`;
+}
+
+function applyPanelScale(scale, options = {}) {
+  const normalized = normalizePanelScale(scale);
+  petStage.style.setProperty("--ui-scale", String(normalized));
+  updatePanelScaleLabel(normalized);
+  if (options.syncInput !== false) {
+    panelScaleInput.value = normalized.toFixed(1);
+  }
+  return normalized;
+}
+
+function isOverlayTarget(target) {
+  return Boolean(
+    target.closest("#settingsPanel") ||
+    target.closest("#historyPanel") ||
+    target.closest("#chatPanel") ||
+    target.closest("#settingsButton") ||
+    target.closest("#historyButton")
+  );
+}
+
+function restorePanelScaleDraft() {
+  draftPanelScale = currentPanelScale;
+  applyPanelScale(currentPanelScale);
+}
+
+async function persistPanelScale(scale) {
+  if (!api?.updateRoleCardScale) {
+    throw new Error("Scale update API unavailable");
+  }
+  const updatedRoleCard = await api.updateRoleCardScale(scale);
+  currentPanelScale = normalizePanelScale(Number(updatedRoleCard?.scale ?? scale));
+  draftPanelScale = currentPanelScale;
+  applyPanelScale(currentPanelScale);
+}
+
+function schedulePanelScalePersist(scale) {
+  if (scalePersistTimer) {
+    clearTimeout(scalePersistTimer);
+  }
+  scalePersistTimer = setTimeout(() => {
+    scalePersistTimer = null;
+    void persistPanelScale(scale).catch(() => {
+      restorePanelScaleDraft();
+      showBubble("宠物缩放保存失败");
+    });
+  }, 120);
 }
 
 function addHistory(text) {
@@ -251,6 +320,9 @@ function renderScoreState(state) {
 }
 
 function applyConfigToInputs() {
+  panelScaleInput.value = currentPanelScale.toFixed(1);
+  updatePanelScaleLabel(currentPanelScale);
+  draftPanelScale = currentPanelScale;
   enablePerceptionLoopInput.checked = currentEnablePerceptionLoop;
   perceptionIntervalInput.value = String(currentPerceptionIntervalSec);
   screenAttentionEnabledInput.checked = currentScreenAttentionEnabled;
@@ -297,6 +369,7 @@ async function loadSettings() {
 }
 
 setSpinner(true);
+applyPanelScale(currentPanelScale);
 showBubble("准备中...");
 renderScoreState({
   active: false,
@@ -337,6 +410,11 @@ if (api?.onUiConfig) {
   api.onUiConfig((config) => {
     if (typeof config?.bubbleTimeoutSec === "number") {
       bubbleTimeoutMs = Math.max(0, config.bubbleTimeoutSec) * 1000;
+    }
+    if (typeof config?.panelScale === "number") {
+      currentPanelScale = normalizePanelScale(config.panelScale);
+      draftPanelScale = currentPanelScale;
+      applyPanelScale(currentPanelScale);
     }
     if (typeof config?.enablePerceptionLoop === "boolean") {
       currentEnablePerceptionLoop = config.enablePerceptionLoop;
@@ -410,7 +488,13 @@ historyButton.addEventListener("click", (event) => {
 });
 
 settingsCancelBtn.addEventListener("click", () => {
+  restorePanelScaleDraft();
   closeSettingsPanel();
+});
+
+panelScaleInput.addEventListener("input", () => {
+  draftPanelScale = normalizePanelScale(Number(panelScaleInput.value));
+  applyPanelScale(draftPanelScale, { syncInput: false });
 });
 
 openScreenshotFolderBtn.addEventListener("click", async () => {
@@ -473,6 +557,12 @@ settingsSaveBtn.addEventListener("click", async () => {
   const bubbleTimeoutSec = Number(bubbleTimeoutInput.value);
   if (!Number.isInteger(bubbleTimeoutSec) || bubbleTimeoutSec < 0 || bubbleTimeoutSec > 600) {
     showBubble("气泡秒数请输入 0 到 600 的整数");
+    return;
+  }
+
+  const panelScale = normalizePanelScale(Number(panelScaleInput.value));
+  if (Number.isNaN(panelScale) || panelScale < MIN_PANEL_SCALE || panelScale > MAX_PANEL_SCALE) {
+    showBubble("宠物缩放请输入 1.0 到 20.0 之间的数值");
     return;
   }
 
@@ -546,6 +636,7 @@ settingsSaveBtn.addEventListener("click", async () => {
     currentEnableMic = updated?.enable_mic !== false;
     currentEnableSystemAudio = updated?.enable_system_audio !== false;
     bubbleTimeoutMs = Number(updated?.bubble_timeout_sec ?? bubbleTimeoutSec) * 1000;
+    await persistPanelScale(panelScale);
 
     closeSettingsPanel();
     if (!switchedRoleCard) {
@@ -598,18 +689,31 @@ chatInput.addEventListener("keydown", (event) => {
   }
 });
 
+petPanel.addEventListener("wheel", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element) || isOverlayTarget(target)) {
+    return;
+  }
+
+  event.preventDefault();
+  const delta = event.deltaY < 0 ? PANEL_SCALE_STEP : -PANEL_SCALE_STEP;
+  const nextScale = normalizePanelScale(currentPanelScale + delta);
+  if (nextScale === currentPanelScale) {
+    return;
+  }
+
+  currentPanelScale = nextScale;
+  draftPanelScale = nextScale;
+  applyPanelScale(nextScale);
+  schedulePanelScalePersist(nextScale);
+}, { passive: false });
+
 petPanel.addEventListener("dblclick", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) {
     return;
   }
-  if (
-    target.closest("#settingsPanel") ||
-    target.closest("#historyPanel") ||
-    target.closest("#chatPanel") ||
-    target.closest("#settingsButton") ||
-    target.closest("#historyButton")
-  ) {
+  if (isOverlayTarget(target)) {
     return;
   }
 

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("tablecat", {
   loadRoleCard: (path) => ipcRenderer.invoke("rolecard:load", path),
+  updateRoleCardScale: (scale) => ipcRenderer.invoke("rolecard:update-scale", scale),
   getConfig: () => ipcRenderer.invoke("config:get"),
   updateConfig: (patch) => ipcRenderer.invoke("config:update", patch),
   sendChatMessage: (text) => ipcRenderer.invoke("chat:send", text),

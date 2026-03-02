@@ -1,6 +1,6 @@
 # TableCat 脚本接口与协议说明
 
-更新时间：2026-02-28
+更新时间：2026-03-02
 适用代码：`src/` 当前实现
 
 ## 1. 边界与约定
@@ -22,15 +22,20 @@
   "scale": "number?",
   "wake_word": "string?",
   "pet_icon_path": "string?",
-  "memory": ["string", "..."]
+  "memory": [{
+    "返回时间": "string",
+    "回复时的心情": "string",
+    "记忆内容": "string"
+  }]
 }
 ```
 
 校验规则：
 - `name`、`prompt` 必填且非空字符串
-- `scale` 若存在必须是 number
+- `scale` 若存在必须是 `1..20` 间的 number
 - `wake_word` / `pet_icon_path` 若存在必须是 string
-- `memory` 若存在必须是数组（当前未逐项校验字符串类型）
+- `memory` 若存在必须是结构化记忆对象数组
+- 兼容旧角色卡中的字符串记忆；加载时会自动迁移并持久化回文件
 
 ### 2.2 AppConfig（应用配置）
 来源：`src/core/config.ts`
@@ -47,7 +52,9 @@
   "enable_perception_loop": "boolean?",
   "enable_screen": "boolean?",
   "enable_mic": "boolean?",
-  "enable_system_audio": "boolean?"
+  "enable_system_audio": "boolean?",
+  "screen_same_topic_cooldown_sec": "integer 0..600?",
+  "screen_busy_cooldown_sec": "integer 0..600?"
 }
 ```
 
@@ -79,6 +86,10 @@
 }
 ```
 
+补充约定：
+- `emotion` 应使用简短中文心情词
+- `memory_summary` 应使用中文；若本轮无需记忆，可返回空字符串
+
 ## 3. IPC 协议（主进程对外）
 来源：`src/main.ts`、`src/preload.js`
 
@@ -91,6 +102,11 @@
 - `config:get`
   - 请求：无
   - 响应：`AppConfig | null`
+
+- `rolecard:update-scale`
+  - 请求：`(scale: number)`
+  - 响应：`RoleCard`
+  - 副作用：更新当前角色卡 `scale`、持久化文件、同步整套宠物舞台缩放，并按舞台尺寸重算窗口边界
 
 - `config:update`
   - 请求：`AppConfigPatch`
@@ -139,6 +155,7 @@
   ```json
   {
     "bubbleTimeoutSec": "number",
+    "panelScale": "number",
     "enablePerceptionLoop": "boolean",
     "perceptionIntervalSec": "number",
     "enableScreen": "boolean",
@@ -153,6 +170,7 @@
 挂载对象：`window.tablecat`
 
 - `loadRoleCard(path)` -> Promise<RoleCard>
+- `updateRoleCardScale(scale)` -> Promise<RoleCard>
 - `getConfig()` -> Promise<AppConfig | null>
 - `updateConfig(patch)` -> Promise<AppConfig>
 - `sendChatMessage(text)` -> Promise<ModelResponse>
@@ -179,12 +197,14 @@
 ### 5.3 `src/core/roleCard.ts`
 - `loadRoleCard(path) => RoleCard`
 - `saveRoleCard(path, roleCard) => void`
-- `appendMemory(roleCard, memorySummary) => RoleCard`
+- `appendMemory(roleCard, memoryEntry) => RoleCard`
+- `updateRoleCardScale(roleCard, scale) => RoleCard`
 - 异常：字段校验失败抛 `RoleCardError`。
+- 协议：加载角色卡时会自动把旧字符串记忆迁移为对象数组。
 
 ### 5.4 `src/core/modelRequest.ts`
 - `buildModelRequest(inputs, roleCard, memory?) => ModelRequest`
-- 协议：未传 `memory` 时默认拼接角色卡 `memory`。
+- 协议：未传 `memory` 时默认将角色卡 `memory` 格式化为逐行 JSON 记忆块。
 
 ### 5.5 `src/core/firstGreeting.ts`
 - `buildFirstGreetingRequest(roleCard) => ModelRequest`
@@ -205,8 +225,12 @@
 - 异常：非 JSON 或缺字段抛 `ResponseParseError`。
 
 ### 5.8 `src/core/memory.ts`
-- `writeMemoryToRoleCard(roleCardPath, roleCard, memorySummary) => RoleCard`
-- 协议：将 `memory_summary` 追加后持久化到角色卡文件。
+- `writeMemoryToRoleCard(roleCardPath, roleCard, response) => RoleCard`
+- 协议：将模型返回的 `memory_summary` 封装为结构化记忆对象后追加到角色卡文件。
+- 当前写回格式示例：
+```json
+{"返回时间":"2026-03-02 21:30:00 +08:00","回复时的心情":"好奇","记忆内容":"用户正在调整记忆存储格式。"}
+```
 
 ### 5.9 `src/core/assistant.ts`
 - `handleModelResponse(raw, roleCardPath, roleCard) => { response, roleCard }`

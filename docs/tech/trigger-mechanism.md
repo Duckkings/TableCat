@@ -244,6 +244,11 @@ finalScore =
 - 同类事件冷却 `screen_same_topic_cooldown_sec`
 - 忙碌保护冷却 `screen_busy_cooldown_sec`
 
+补充说明：
+- 只有 `screen_global_cooldown_sec` 未配置时仍会使用默认值 `1s`
+- `screen_same_topic_cooldown_sec` 与 `screen_busy_cooldown_sec` 未配置时默认关闭
+- 调试面板中的 `cooldown` 现在显示当前实际命中的那一层冷却剩余时间，不再只显示全局冷却
+
 对应决策原因：
 - `global_cooldown`
 - `same_topic_cooldown`

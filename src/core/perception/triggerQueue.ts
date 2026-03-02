@@ -16,7 +16,7 @@ export class TriggerQueue {
     return this.lastTriggerAtMs;
   }
 
-  getCooldownRemainingMs(nowMs: number): number {
+  getGlobalCooldownRemainingMs(nowMs: number): number {
     return Math.max(0, this.config.globalCooldownMs - (nowMs - this.lastTriggerAtMs));
   }
 
@@ -32,13 +32,18 @@ export class TriggerQueue {
     userIdleScore: number;
     interruptActiveResponse?: boolean;
     currentResponseScore?: number;
-  }): { decision: "drop" | "cooldown" | "trigger"; reasons: string[]; noveltyScore: number } {
+  }): {
+    decision: "drop" | "cooldown" | "trigger";
+    reasons: string[];
+    noveltyScore: number;
+    cooldownRemainingMs?: number;
+  } {
     const reasons: string[] = [];
     const noveltyScore = this.getNoveltyScore(params.signature);
 
     if (params.finalScore < params.triggerThreshold) {
       reasons.push("below_trigger_threshold");
-      return { decision: "drop", reasons, noveltyScore };
+      return { decision: "drop", reasons, noveltyScore, cooldownRemainingMs: 0 };
     }
 
     if (
@@ -48,35 +53,62 @@ export class TriggerQueue {
     ) {
       this.recordTrigger(params.nowMs, params.signature, params.userIdleScore);
       reasons.push("interrupt_active_reply");
-      return { decision: "trigger", reasons, noveltyScore };
+      return { decision: "trigger", reasons, noveltyScore, cooldownRemainingMs: 0 };
     }
 
-    if (params.nowMs - this.lastTriggerAtMs < this.config.globalCooldownMs) {
-      reasons.push("global_cooldown");
-      return { decision: "cooldown", reasons, noveltyScore };
-    }
-
-    const similarRecent = this.findSimilarRecent(params.signature);
-    if (similarRecent && params.nowMs - similarRecent.atMs < this.config.sameTopicCooldownMs) {
-      reasons.push("same_topic_cooldown");
-      return { decision: "cooldown", reasons, noveltyScore };
-    }
-
-    if (
-      params.userIdleScore < 0.35 &&
-      params.nowMs - this.lastBusyTriggerAtMs < this.config.busyCooldownMs
-    ) {
-      reasons.push("busy_cooldown");
-      return { decision: "cooldown", reasons, noveltyScore };
+    const cooldownBlock = this.getCooldownBlock(
+      params.nowMs,
+      params.signature,
+      params.userIdleScore
+    );
+    if (cooldownBlock) {
+      reasons.push(cooldownBlock.reason);
+      return {
+        decision: "cooldown",
+        reasons,
+        noveltyScore,
+        cooldownRemainingMs: cooldownBlock.remainingMs
+      };
     }
 
     this.recordTrigger(params.nowMs, params.signature, params.userIdleScore);
     reasons.push("trigger_ready");
-    return { decision: "trigger", reasons, noveltyScore };
+    return { decision: "trigger", reasons, noveltyScore, cooldownRemainingMs: 0 };
   }
 
   peekCooldown(nowMs: number): boolean {
     return nowMs - this.lastTriggerAtMs >= this.config.globalCooldownMs;
+  }
+
+  private getCooldownBlock(
+    nowMs: number,
+    signature: string,
+    userIdleScore: number
+  ): { reason: string; remainingMs: number } | null {
+    const globalRemainingMs = this.getGlobalCooldownRemainingMs(nowMs);
+    if (globalRemainingMs > 0) {
+      return { reason: "global_cooldown", remainingMs: globalRemainingMs };
+    }
+
+    if (this.config.sameTopicCooldownMs > 0) {
+      const similarRecent = this.findSimilarRecent(signature);
+      if (similarRecent) {
+        const sameTopicRemainingMs =
+          similarRecent.atMs + this.config.sameTopicCooldownMs - nowMs;
+        if (sameTopicRemainingMs > 0) {
+          return { reason: "same_topic_cooldown", remainingMs: sameTopicRemainingMs };
+        }
+      }
+    }
+
+    if (this.config.busyCooldownMs > 0 && userIdleScore < 0.35) {
+      const busyRemainingMs = this.lastBusyTriggerAtMs + this.config.busyCooldownMs - nowMs;
+      if (busyRemainingMs > 0) {
+        return { reason: "busy_cooldown", remainingMs: busyRemainingMs };
+      }
+    }
+
+    return null;
   }
 
   private computeNovelty(signature: string): number {

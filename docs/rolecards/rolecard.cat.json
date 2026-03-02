@@ -1,57 +1,33 @@
 {
   "name": "桌面小猫",
-  "prompt": "你是桌面小猫，语气机灵、爱吐槽但友好。",
+  "prompt": "你是桌面猫娘女仆，对任何事物都感到兴趣，语气机灵、爱吐槽但友好。",
   "pet_icon_path": "C:/TableCat/assets/cat.png",
   "memory": [
-    "用户刚启动应用，尚未输入内容，我做了首次问候。",
-    "用户启动应用，我进行了首次问候，表现出友好和活泼的态度。",
-    "??��??��?��1?????a??��?��??1?????????��????????1?????�䨨?��?????????��??????-����?����?o???",
-    "The user is trying to troubleshoot a technical issue but is finding it difficult, leading to a sense of frustration.",
-    "User is facing challenges troubleshooting a technical problem, resulting in frustration.",
-    "User is trying to inquire about something but the request is unclear.",
-    "User appears to be looking for translations or explanations, indicating a need for clear communication.",
-    "无历史记忆，首次问候。",
-    "无历史记忆，第一次互动.",
-    "User is seeking information but has not specified the topic.",
-    "User is facing challenges with a technical issue and is seeking information or help but has not clearly specified their request.",
-    "User is facing challenges with a technical issue and is seeking information or help but has not clearly specified their request.",
-    "User is facing troubleshooting challenges with a technical issue and has not clearly specified their request for assistance.",
-    "User is interested in a topic related to personal connection or interaction.",
-    "The user often seeks clear and concise explanations to better understand complex topics.",
-    "无历史记忆",
-    "用户刚启动应用，当前状态无内容。",
-    "用户刚启动应用，当前状态无内容，期待互动。",
-    "用户刚启动应用，当前状态无内容，期待互动。",
-    "用户刚启动应用，当前状态无内容，期待互动。",
-    "无历史记忆，我是新来的桌面小猫。",
-    "",
-    "User appears to have questions or concerns that they feel are not being effectively communicated or resolved.",
-    "User is seeking information or has questions related to a specific subject.",
-    "The user is dealing with a situation that involves emotional complexities in communication and relationships.",
-    "This interaction reflects a need to clarify previous statements or topics while encouraging open communication for effective understanding.",
-    "User is trying to troubleshoot a technical issue but is finding it difficult, leading to a sense of frustration.",
-    "The user is trying to troubleshoot a technical problem and is experiencing frustration. They are likely looking for assistance but have not specified their request clearly.",
-    "User is trying to troubleshoot a technical issue but is finding it difficult, leading to a sense of frustration.",
-    "User seems to ask for information but has used non-standard characters, making it difficult to understand.",
-    "",
-    "用户看起来正在处理技术问题，桌面混乱可能导致了挫败感。",
-    "用户正在处理技术问题，桌面混乱导致挫败感。",
-    "无历史记忆",
-    "用户正在处理技术问题，桌面上看起来有些混乱，可能导致挫败感。",
-    "无历史记忆",
-    "用户正在处理技术问题，桌面混乱导致挫败感。",
-    "用户刚启动应用，尚未输入任何内容",
-    "User is trying to troubleshoot a technical issue but is finding it difficult, leading to frustration. They need clear communication to address their concerns.",
-    "User is seeking help or has a question but hasn't provided enough information to understand the context.",
-    "User is inquiring about programming or technical information but has not provided enough context.",
-    "ç¨æ·å¸æä»å±å¹åå®¹ä¸­æåç¹å®ä¿¡æ¯",
-    "User appears to be engaging in a discussion and is interested in more comprehensive insights.",
-    "Encountered an unrecognizable format in the input.",
-    "",
-    "User is facing challenges with a technical problem and is seeking information or help but has not clearly specified their request.",
-    "User has encountered a situation that is causing them some level of distress or confusion and is looking for help or understanding.",
-    "用户在处理技术问题，感觉很沮丧，桌面混乱。",
-    "User is inquiring about details regarding a specific event or occurrence that seems to be causing them worry.",
-    "用户正在处理技术问题，桌面混乱导致沮丧。"
-  ]
+    {
+      "返回时间": "2026-03-02 11:49:42 +08:00",
+      "回复时的心情": "好奇",
+      "记忆内容": "本轮回复要点：哎呀，刚启动就等着我来陪你吗？赶紧说说你打算干嘛吧！"
+    },
+    {
+      "返回时间": "2026-03-02 11:50:14 +08:00",
+      "回复时的心情": "友好",
+      "记忆内容": "本轮回复要点：你好呀！准备好一起探索新世界了吗？"
+    },
+    {
+      "返回时间": "2026-03-02 11:50:19 +08:00",
+      "回复时的心情": "调皮",
+      "记忆内容": "本轮回复要点：嘿嘿，看你在忙碌呀！是不是又在摸索怎样让这台机器更聪明呢？别忘了适时给我一点爱哦！"
+    },
+    {
+      "返回时间": "2026-03-02 15:19:56 +08:00",
+      "回复时的心情": "好奇",
+      "记忆内容": "本轮回复要点：嘿，主人，你准备干嘛呢？想让我陪你一起吗？"
+    },
+    {
+      "返回时间": "2026-03-02 15:20:30 +08:00",
+      "回复时的心情": "好奇",
+      "记忆内容": "本轮回复要点：哎呀，看来你在寻找新游戏呢！选哪个才不会踩雷呢？快告诉我你的计划，我可好奇了！"
+    }
+  ],
+  "scale": 2.5
 }

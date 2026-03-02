@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TableCat</title>
     <style>
+      :root {
+        --ui-scale: 1;
+      }
+
       body {
         margin: 0;
         font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -18,14 +22,24 @@
         display: flex;
         align-items: flex-end;
         justify-content: center;
-        padding-bottom: 24px;
         box-sizing: border-box;
+      }
+
+      .pet-stage {
+        width: 360px;
+        height: 560px;
+        position: relative;
+        transform: scale(var(--ui-scale));
+        transform-origin: center bottom;
       }
 
       .pet-panel {
         width: 158px;
         height: 206px;
-        position: relative;
+        position: absolute;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -76,7 +90,7 @@
       }
 
       .bubble {
-        bottom: 228px;
+        bottom: 252px;
         max-width: 300px;
         padding: 8px 12px;
         border-radius: 12px;
@@ -104,7 +118,7 @@
       }
 
       .history-panel {
-        bottom: 228px;
+        bottom: 252px;
         max-height: 240px;
         padding: 8px 10px;
         overflow-y: auto;
@@ -113,7 +127,7 @@
       }
 
       .chat-panel {
-        bottom: 228px;
+        bottom: 252px;
         width: 304px;
         height: 244px;
         padding: 8px;
@@ -217,6 +231,17 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px 10px;
+      }
+
+      .settings-range {
+        flex: 1;
+      }
+
+      .settings-value {
+        min-width: 44px;
+        text-align: right;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.62);
       }
 
       .settings-row {
@@ -325,39 +350,40 @@
   </head>
   <body>
     <div class="pet-container">
-      <div class="pet-panel" id="petPanel">
-        <div class="spinner" id="spinner"></div>
-        <button class="panel-button settings-button" id="settingsButton" type="button">设</button>
-        <button class="panel-button history-button" id="historyButton" type="button">记</button>
-        <img class="pet-icon" id="petIcon" alt="pet" />
+      <div class="pet-stage" id="petStage">
+        <div class="pet-panel" id="petPanel">
+          <div class="spinner" id="spinner"></div>
+          <button class="panel-button settings-button" id="settingsButton" type="button">设</button>
+          <button class="panel-button history-button" id="historyButton" type="button">记</button>
+          <img class="pet-icon" id="petIcon" alt="pet" />
 
-        <div class="score-badge score-idle" id="scoreBadge">
-          <div class="score-badge-row">
-            <span class="score-badge-title">Gate</span>
-            <span class="score-badge-decision" id="scoreDecision">IDLE</span>
-          </div>
-          <div class="score-badge-row">
-            <span id="scoreSummary">S 0.00</span>
-            <span id="scoreL0L1">L0 x L1 x</span>
-          </div>
-          <div class="score-badge-row">
-            <span id="scoreTick">Tick 500ms</span>
-            <span id="scoreSampling">Base</span>
-          </div>
-          <div class="score-badge-row score-badge-small">
-            <span id="scoreRaw">d 0.00 h 0 c 0.00</span>
-            <span id="scoreCool">cooldown 0ms</span>
-          </div>
-          <div class="score-badge-row score-badge-small">
-            <span id="scorePerf">dt 0ms it 0ms</span>
-            <span id="scoreFg">fg -</span>
-          </div>
-          <div class="score-badge-row score-badge-small">
-            <span id="scoreRsp">rsp -</span>
-            <span id="scoreReason">waiting_for_frame</span>
+          <div class="score-badge score-idle" id="scoreBadge">
+            <div class="score-badge-row">
+              <span class="score-badge-title">Gate</span>
+              <span class="score-badge-decision" id="scoreDecision">IDLE</span>
+            </div>
+            <div class="score-badge-row">
+              <span id="scoreSummary">S 0.00</span>
+              <span id="scoreL0L1">L0 x L1 x</span>
+            </div>
+            <div class="score-badge-row">
+              <span id="scoreTick">Tick 500ms</span>
+              <span id="scoreSampling">Base</span>
+            </div>
+            <div class="score-badge-row score-badge-small">
+              <span id="scoreRaw">d 0.00 h 0 c 0.00</span>
+              <span id="scoreCool">cooldown 0ms</span>
+            </div>
+            <div class="score-badge-row score-badge-small">
+              <span id="scorePerf">dt 0ms it 0ms</span>
+              <span id="scoreFg">fg -</span>
+            </div>
+            <div class="score-badge-row score-badge-small">
+              <span id="scoreRsp">rsp -</span>
+              <span id="scoreReason">waiting_for_frame</span>
+            </div>
           </div>
         </div>
-
         <div class="history-panel" id="historyPanel">
           <div class="history-title">回复记录</div>
           <div id="historyList"></div>
@@ -385,6 +411,11 @@
             <div class="settings-row">
               <div class="settings-label">气泡秒数</div>
               <input class="settings-input" id="bubbleTimeoutInput" type="number" min="0" step="1" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">宠物缩放</div>
+              <input class="settings-range" id="panelScaleInput" type="range" min="1" max="20" step="0.1" />
+              <div class="settings-value" id="panelScaleValue">1.0x</div>
             </div>
             <div class="settings-row">
               <div class="settings-label">感知总开关</div>

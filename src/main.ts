@@ -3,9 +3,10 @@ import path from "path";
 import { buildFirstGreetingRequest } from "./core/firstGreeting";
 import { requestModel, testOpenAIConnection } from "./core/openai";
 import { handleModelError, handleModelResponse } from "./core/assistant";
-import { loadRoleCard } from "./core/roleCard";
+import { loadRoleCard, saveRoleCard, updateRoleCardScale } from "./core/roleCard";
 import { AppConfig, AppConfigPatch, loadAppConfig, updateAppConfig } from "./core/config";
 import { buildModelRequest } from "./core/modelRequest";
+import { normalizeRoleCardScale } from "./core/memoryEntry";
 import { openScreenshotSessionFolder } from "./core/perception/screenCapture";
 import { PerceptionScheduler } from "./core/perception/scheduler";
 import { ScreenAttentionLoop } from "./core/perception/attentionLoop";
@@ -33,6 +34,11 @@ let pendingPerceptionBatch:
     }
   | null = null;
 
+const MIN_WINDOW_WIDTH = 360;
+const MIN_WINDOW_HEIGHT = 560;
+const BASE_STAGE_WIDTH = 360;
+const BASE_STAGE_HEIGHT = 560;
+
 function sendToRenderer(channel: string, payload: unknown): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -41,6 +47,30 @@ function sendToRenderer(channel: string, payload: unknown): void {
     return;
   }
   mainWindow.webContents.send(channel, payload);
+}
+
+function resizeMainWindowForScale(scale: number): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const normalizedScale = normalizeRoleCardScale(scale);
+  const nextWidth = Math.max(
+    MIN_WINDOW_WIDTH,
+    Math.ceil(BASE_STAGE_WIDTH * normalizedScale)
+  );
+  const nextHeight = Math.max(
+    MIN_WINDOW_HEIGHT,
+    Math.ceil(BASE_STAGE_HEIGHT * normalizedScale)
+  );
+  const bounds = mainWindow.getBounds();
+
+  mainWindow.setBounds({
+    x: Math.round(bounds.x + (bounds.width - nextWidth) / 2),
+    y: Math.round(bounds.y + bounds.height - nextHeight),
+    width: nextWidth,
+    height: nextHeight
+  });
 }
 
 function normalizeChineseGreeting(content: string): string {
@@ -129,9 +159,10 @@ function resolveScreenAttentionEnabled(config: AppConfig): boolean {
   return config.enable_perception_loop === true;
 }
 
-function buildUiConfig(config: AppConfig) {
+function buildUiConfig(config: AppConfig, roleCard?: RoleCard | null) {
   return {
     bubbleTimeoutSec: config.bubble_timeout_sec ?? 3,
+    panelScale: normalizeRoleCardScale(roleCard?.scale),
     enablePerceptionLoop: config.enable_perception_loop === true,
     perceptionIntervalSec: normalizePerceptionInterval(config.perception_interval_sec),
     enableScreen: config.enable_screen !== false,
@@ -146,6 +177,19 @@ function buildUiConfig(config: AppConfig) {
     activeCompanionEnabled: config.active_companion_enabled === true,
     activeCompanionIntervalMin: config.active_companion_interval_min ?? 7
   };
+}
+
+function syncRoleCardUi(config: AppConfig | null | undefined, roleCard: RoleCard | null | undefined): void {
+  const panelScale = normalizeRoleCardScale(roleCard?.scale);
+  resizeMainWindowForScale(panelScale);
+  if (roleCard) {
+    sendToRenderer("pet:icon", roleCard.pet_icon_path ?? "");
+  }
+  if (config) {
+    sendToRenderer("ui:config", buildUiConfig(config, roleCard));
+    return;
+  }
+  sendToRenderer("ui:config", { panelScale });
 }
 
 async function buildPerceptionInputs(config: AppConfig): Promise<PerceptionInput[]> {
@@ -296,6 +340,7 @@ async function handlePerceptionBatch(config: AppConfig, inputs: PerceptionInput[
     });
   } catch (error) {
     handleModelError(error);
+    publishBubble("这次没接上，我稍后再试。", { config });
   } finally {
     perceptionInFlight = false;
     inFlightPerceptionScore = 0;
@@ -335,17 +380,16 @@ async function initializeAppSession(): Promise<void> {
   try {
     config = loadAppConfig();
     if (!config) {
-      sendToRenderer("ui:config", { bubbleTimeoutSec: 3 });
+      sendToRenderer("ui:config", { bubbleTimeoutSec: 3, panelScale: 1 });
       publishBubble("缺少 app.config.json");
       return;
     }
 
     validatePromptCatalog();
-    sendToRenderer("ui:config", buildUiConfig(config));
     roleCard = loadRoleCard(config.role_card_path);
     activeRoleCard = roleCard;
     activeRoleCardPath = config.role_card_path;
-    sendToRenderer("pet:icon", roleCard.pet_icon_path ?? "");
+    syncRoleCardUi(config, roleCard);
   } catch (error) {
     handleModelError(error);
     publishBubble("配置加载失败");
@@ -422,7 +466,21 @@ ipcMain.handle("rolecard:load", (_event, roleCardPath: string) => {
   const roleCard = loadRoleCard(roleCardPath);
   activeRoleCard = roleCard;
   activeRoleCardPath = roleCardPath;
+  syncRoleCardUi(loadAppConfig(), roleCard);
   return roleCard;
+});
+
+ipcMain.handle("rolecard:update-scale", async (_event, scale: number) => {
+  logInfo(`IPC rolecard:update-scale ${scale}`);
+  if (!activeRoleCard || !activeRoleCardPath) {
+    throw new Error("Role card not loaded");
+  }
+
+  const updatedRoleCard = updateRoleCardScale(activeRoleCard, scale);
+  saveRoleCard(activeRoleCardPath, updatedRoleCard);
+  activeRoleCard = updatedRoleCard;
+  syncRoleCardUi(loadAppConfig(), updatedRoleCard);
+  return updatedRoleCard;
 });
 
 ipcMain.handle("config:get", () => {
@@ -443,10 +501,9 @@ ipcMain.handle("config:update", async (_event, patch: AppConfigPatch) => {
   if (nextRoleCard) {
     activeRoleCard = nextRoleCard;
     activeRoleCardPath = updated.role_card_path;
-    sendToRenderer("pet:icon", nextRoleCard.pet_icon_path ?? "");
   }
 
-  sendToRenderer("ui:config", buildUiConfig(updated));
+  syncRoleCardUi(updated, activeRoleCard);
   restartPerceptionScheduler(updated);
   restartScreenAttention(updated);
 

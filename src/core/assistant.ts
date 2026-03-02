@@ -13,7 +13,7 @@ export function handleModelResponse(
   const updatedRoleCard = writeMemoryToRoleCard(
     roleCardPath,
     roleCard,
-    response.memory_summary
+    response
   );
   logInfo("Memory writeback completed");
   return { response, roleCard: updatedRoleCard };

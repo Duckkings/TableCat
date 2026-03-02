@@ -1,5 +1,5 @@
 # TableCat 技术设计
-更新日期：2026-02-28
+更新日期：2026-03-02
 
 ## 1. 目标
 本文档描述 TableCat 当前代码实现对应的总体技术方案，重点覆盖：
@@ -23,9 +23,17 @@
   - 应用启动
   - 配置加载
   - 角色卡加载
+  - 角色卡缩放同步与窗口尺寸联动
   - 门控与旧轮询调度
   - 模型请求派发
   - 气泡显示与抢占控制
+- `src/core/roleCard.ts`
+  - 角色卡校验
+  - 旧版记忆迁移
+  - 角色卡落盘
+- `src/core/memoryEntry.ts`
+  - 结构化记忆构造
+  - 记忆迁移与送模格式化
 - `src/core/perception/*`
   - 截图采集
   - 屏幕门控
@@ -78,8 +86,8 @@
 - `screen_active_sampling_enabled = false`
 - `screen_trigger_threshold = 0.35`
 - `screen_global_cooldown_sec = 1`
-- `screen_same_topic_cooldown_sec = 120`
-- `screen_busy_cooldown_sec = 180`
+- `screen_same_topic_cooldown_sec = 0`（未配置时关闭）
+- `screen_busy_cooldown_sec = 0`（未配置时关闭）
 
 ### 3.3 为什么拆成两层频率
 当前实现明确区分：
@@ -156,7 +164,26 @@ finalScore =
 技术约束：
 - 程序启动时会校验 CSV 必需项
 - 默认系统 Prompt 与各输入模板都从表中读取
+- 历史记忆送模前会格式化为逐行 JSON 对象
 - 便于后续在线修改提示词而不改代码
+
+## 7.1 角色卡记忆设计
+角色卡 `memory` 当前使用对象数组而不是字符串数组：
+
+```json
+[
+  {
+    "返回时间": "2026-03-02 21:30:00 +08:00",
+    "回复时的心情": "好奇",
+    "记忆内容": "用户正在调整记忆存储格式。"
+  }
+]
+```
+
+技术行为：
+- 新回复写回时直接生成结构化对象
+- 旧角色卡中的纯字符串或 JSON 字符串会在加载阶段自动迁移
+- 模型请求阶段会把对象重新格式化成逐行 JSON 文本注入 prompt
 
 ## 8. 日志与调试
 ### 8.1 运行日志
@@ -226,12 +253,22 @@ Renderer 当前通过 IPC 接收：
 - `ui:config`
 - `debug:score`
 
+Renderer 当前还可主动调用：
+- `rolecard:update-scale`
+
 Renderer 当前展示：
 - 气泡
 - 历史记录
 - 聊天面板
 - 设置面板
 - 门控评分牌
+
+缩放链路：
+- 角色卡 `scale` 作为持久化来源
+- Renderer 在宠物面板滚轮和设置滑条中产生缩放请求
+- Renderer 将缩放应用到 `pet-stage` 根容器，统一缩放宠物面板、气泡、设置/历史/聊天面板和字体
+- Main 进程保存角色卡并重新广播 `ui:config.panelScale`
+- Main 同时按舞台基准尺寸和缩放倍率重算窗口尺寸，避免大倍率时内容被固定内部边界裁切
 
 ## 11. 当前已知边界
 - 旧轮询与屏幕门控同时存在，尚未统一成一个感知总线
